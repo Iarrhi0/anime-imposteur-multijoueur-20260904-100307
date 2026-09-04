@@ -1,7 +1,8 @@
 import { firebaseConfig } from "./firebase-config.js";
 import { animeDB, chooseIntelligentPair, getAiStats } from "./ai-engine.js";
 import {
-  chooseBotHint, chooseBotVote, botVoteApproval, buildBotDiscussion
+  chooseBotHint, chooseBotVote, botVoteApproval, buildBotDiscussion,
+  shouldBotReply, botReplyDelay
 } from "./bot-engine.js";
 
 const $=s=>document.querySelector(s);
@@ -22,10 +23,15 @@ let players=[],bots=[],assignment=null,botAssignments={};
 let hints=[],messages=[],voteApprovals=[],voteStatuses=[];
 let activeTab="hints", unreadHints=0, unreadChat=0;
 let installPrompt=null;
+const characterImageCache=new Map();
+const INSTALL_SEEN_KEY="anime_imposteur_install_prompt_seen_v1";
 let gameInitKey="";
 let hostProcessing=false;
 let hostReconsiderTimer=null;
 let hostBotDiscussionTimer=null;
+let hostLastBotReplyToMessageId=null;
+let hostBotReplyBusy=false;
+let leavingRoom=false;
 
 const unsubs=[];
 const localSettings={mode:"auto",difficulty:"hard"};
@@ -62,6 +68,68 @@ function toast(title,text=""){
   $("#toast-layer").appendChild(el);
   requestAnimationFrame(()=>el.classList.add("show"));
   setTimeout(()=>{el.classList.remove("show");setTimeout(()=>el.remove(),220)},3000);
+}
+
+
+function fallbackCharacterImage(name){
+  const svg=`<svg xmlns="http://www.w3.org/2000/svg" width="240" height="320">
+    <rect width="100%" height="100%" fill="#111c2b"/>
+    <circle cx="120" cy="115" r="54" fill="#7c3aed"/>
+    <circle cx="98" cy="108" r="8" fill="white"/>
+    <circle cx="142" cy="108" r="8" fill="white"/>
+    <text x="120" y="225" text-anchor="middle" fill="white" font-family="Arial" font-size="18">${String(name||"?").replace(/[&<>]/g,"")}</text>
+  </svg>`;
+  return "data:image/svg+xml;charset=utf-8,"+encodeURIComponent(svg);
+}
+
+async function getCharacterImage(name){
+  if(!name)return null;
+  if(characterImageCache.has(name))return characterImageCache.get(name);
+
+  const storageKey="anime_char_img_"+name;
+  try{
+    const cached=localStorage.getItem(storageKey);
+    if(cached){
+      characterImageCache.set(name,cached);
+      return cached;
+    }
+  }catch{}
+
+  try{
+    const url=`https://api.jikan.moe/v4/characters?q=${encodeURIComponent(name)}&limit=1`;
+    const res=await fetch(url,{headers:{"Accept":"application/json"}});
+    if(!res.ok)throw new Error("image api");
+    const data=await res.json();
+    const image=data?.data?.[0]?.images?.jpg?.image_url || data?.data?.[0]?.images?.webp?.image_url || null;
+    if(image){
+      characterImageCache.set(name,image);
+      try{localStorage.setItem(storageKey,image)}catch{}
+      return image;
+    }
+  }catch(e){
+    console.warn("Character image unavailable:",name,e);
+  }
+
+  const fallback=fallbackCharacterImage(name);
+  characterImageCache.set(name,fallback);
+  return fallback;
+}
+
+async function setCharacterPhoto(imgEl,name){
+  if(!imgEl)return;
+  imgEl.src=await getCharacterImage(name);
+  imgEl.alt=name||"Personnage";
+}
+
+function maybeOfferInstallOnce(){
+  if(localStorage.getItem(INSTALL_SEEN_KEY)==="1")return;
+  if(window.matchMedia?.("(display-mode: standalone)")?.matches)return;
+
+  // Show after the user has actually entered a room, not on the landing page.
+  setTimeout(()=>{
+    if(localStorage.getItem(INSTALL_SEEN_KEY)==="1")return;
+    $("#install-modal")?.classList.remove("hidden");
+  },900);
 }
 
 async function initFirebase(){
@@ -146,12 +214,12 @@ async function resumeRoom(code){
 
 async function enterRoom(code){
   cleanup();
-  currentRoom=code;localStorage.setItem("anime_room",code);
+  currentRoom=code;localStorage.setItem("anime_room",code);maybeOfferInstallOnce();
   $("#room-code").textContent=code;$("#game-room-code").textContent=code;
   const {doc,collection,onSnapshot}=fb.fsMod;
 
   unsubs.push(onSnapshot(doc(db,"rooms",code),snap=>{
-    if(!snap.exists()){toast("Salle fermée");resetHome();return}
+    if(!snap.exists()){if(!leavingRoom)toast("Salle fermée");resetHome();return}
     const prev=currentRoomData;
     currentRoomData=snap.data();
     isHost=currentRoomData.hostUid===currentUser.uid;
@@ -189,7 +257,7 @@ async function enterRoom(code){
     renderMessages();
     for(const m of messages)if(!oldIds.has(m.id)&&gameInitKey&&m.playerId!==currentUser.uid){
       if(activeTab!=="chat"&&currentRoomData?.status!=="postvote"){unreadChat++;renderBadges()}
-      toast(`${m.playerName} a écrit`,m.text.slice(0,70));
+      toast(`${m.playerName}`,m.text.slice(0,48));
     }
     if(isHost)maybeBotDiscuss().catch(console.error);
   }));
@@ -298,11 +366,28 @@ function renderGameHeader(){
   renderTurn();
 }
 
-function renderCharacter(){
+async function renderCharacter(){
   const visible=$("#toggle-character-btn").dataset.visible==="1";
-  if(!assignment){$("#character-name").textContent="••••••";$("#character-anime").textContent="Secret";return}
+  const wrap=$("#character-photo-wrap");
+  const img=$("#character-photo");
+
+  if(!assignment){
+    $("#character-name").textContent="••••••";
+    $("#character-anime").textContent="Secret";
+    wrap?.classList.add("hidden");
+    return;
+  }
+
   $("#character-name").textContent=visible?assignment.name:"••••••";
   $("#character-anime").textContent=visible?assignment.anime:"Secret";
+
+  if(visible){
+    wrap?.classList.remove("hidden");
+    await setCharacterPhoto(img,assignment.name);
+  }else{
+    wrap?.classList.add("hidden");
+    if(img)img.removeAttribute("src");
+  }
 }
 
 function renderTurn(){
@@ -410,15 +495,22 @@ function updateClientCountdown(){
   if(n>0)setTimeout(()=>{if(currentRoomData?.voteStage==="reconsider")updateClientCountdown()},250);
 }
 
-function renderResult(){
+async function renderResult(){
   const r=currentRoomData?.result;if(!r)return;
   const normals=r.winner==="normal";
   $("#result-emoji").textContent=normals?"🏆":"😈";
   $("#result-title").textContent=normals?"Les joueurs normaux gagnent !":"L’imposteur gagne !";
   const imp=participantById(r.impostorId);const eliminated=participantById(r.eliminatedId);
+
+  $("#result-majority-name").textContent=r.majority.name;
+  $("#result-impostor-name").textContent=r.outsider.name;
+  $("#result-images").classList.remove("hidden");
+  setCharacterPhoto($("#result-majority-photo"),r.majority.name);
+  setCharacterPhoto($("#result-impostor-photo"),r.outsider.name);
+
   $("#result-text").innerHTML=normals
-    ? `L’imposteur était <b>${esc(imp?.name||"")}</b>.<br><br>Personnage commun : <b>${esc(r.majority.name)}</b><br>Personnage imposteur : <b>${esc(r.outsider.name)}</b>`
-    : `Le groupe a éliminé <b>${esc(eliminated?.name||"")}</b>, qui n’était pas l’imposteur.<br><br>L’imposteur était <b>${esc(imp?.name||"")}</b>.<br>Personnage commun : <b>${esc(r.majority.name)}</b><br>Personnage imposteur : <b>${esc(r.outsider.name)}</b>`;
+    ? `L’imposteur était <b>${esc(imp?.name||"")}</b>.`
+    : `Le groupe a éliminé <b>${esc(eliminated?.name||"")}</b>, qui n’était pas l’imposteur.<br><br>L’imposteur était <b>${esc(imp?.name||"")}</b>.`;
 }
 
 function renderScores(){
@@ -575,11 +667,42 @@ async function hostTick(){
   if(!isHost||hostProcessing||!currentRoomData)return;
   hostProcessing=true;
   try{
+    await hostEnsureParticipantOrder();
     await hostActivateProposal();
     await hostProcessTurn();
     await hostProcessVoteRequest();
     await hostProcessVoting();
   }finally{hostProcessing=false}
+}
+
+
+async function hostEnsureParticipantOrder(){
+  if(!isHost||!currentRoomData)return;
+  if(!["playing","vote_request","voting"].includes(currentRoomData.status))return;
+
+  const validIds=new Set(participants().map(p=>p.id));
+  const oldOrder=currentRoomData.order||[];
+  const cleaned=oldOrder.filter(id=>validIds.has(id));
+
+  // Add any participant that joined/reappeared and is not in the order.
+  for(const p of participants()){
+    if(!cleaned.includes(p.id))cleaned.push(p.id);
+  }
+
+  let nextTurn=currentRoomData.turnIndex||0;
+  if(nextTurn>cleaned.length)nextTurn=cleaned.length;
+
+  const changed=
+    cleaned.length!==oldOrder.length ||
+    cleaned.some((id,i)=>id!==oldOrder[i]) ||
+    nextTurn!==(currentRoomData.turnIndex||0);
+
+  if(changed){
+    await fb.fsMod.updateDoc(
+      fb.fsMod.doc(db,"rooms",currentRoom),
+      {order:cleaned,turnIndex:nextTurn}
+    );
+  }
 }
 
 async function hostActivateProposal(){
@@ -628,7 +751,7 @@ async function hostProcessVoteRequest(){
   for(const b of bots){
     if(voteApprovals.some(x=>x.playerId===b.id&&x.token===token))continue;
     const a=botAssignments[b.id];if(!a)continue;
-    const decision=botVoteApproval(a.name,currentGameHints())?"yes":"no";
+    const decision=botVoteApproval(a.name,currentGameHints(),b.name)?"yes":"no";
     await fb.fsMod.setDoc(fb.fsMod.doc(db,"rooms",currentRoom,"voteApprovals",`${token}_${b.id}`),{
       token,gameNo:currentRoomData.gameNo,playerId:b.id,playerName:b.name,decision
     });
@@ -731,40 +854,176 @@ async function hostResolveVote(){
 }
 
 async function maybeBotDiscuss(){
-  if(!isHost||currentRoomData?.status!=="playing"||!bots.length)return;
+  if(!isHost||currentRoomData?.status!=="playing"||!bots.length||hostBotReplyBusy)return;
   clearTimeout(hostBotDiscussionTimer);
+
   const last=messages[messages.length-1];
-  if(!last||last.playerId?.startsWith("bot_"))return;
-  if(last.botReplyScheduled)return;
+  if(!last)return;
+
+  // Never let bots trigger an endless bot-to-bot chain.
+  if(String(last.playerId||"").startsWith("bot_"))return;
+
+  const messageId=last.id||`${last.playerId}_${last.createdMs||0}`;
+  if(hostLastBotReplyToMessageId===messageId)return;
+
+  const candidates=bots.filter(b=>{
+    const a=botAssignments[b.id];
+    return a && shouldBotReply(b.name,last,messages);
+  });
+
+  if(!candidates.length)return;
+
+  // At most one IA responds to one human message most of the time.
+  const b=candidates[Math.floor(Math.random()*candidates.length)];
+  const a=botAssignments[b.id];
+  const delay=botReplyDelay(b.name,last);
+
+  hostLastBotReplyToMessageId=messageId;
+  hostBotReplyBusy=true;
+
   hostBotDiscussionTimer=setTimeout(async()=>{
-    if(currentRoomData?.status!=="playing")return;
-    const b=bots[Math.floor(Math.random()*bots.length)],a=botAssignments[b.id];
-    if(!a)return;
-    const text=buildBotDiscussion(b.name,a.name,currentGameHints(),messages);
-    await sendMessage(text,false,b.id,b.name);
-  },1200+Math.random()*1000);
+    try{
+      if(currentRoomData?.status!=="playing")return;
+      const text=buildBotDiscussion(
+        b.name,
+        a.name,
+        currentGameHints(),
+        messages,
+        participants()
+      );
+      await sendMessage(text,false,b.id,b.name);
+    }catch(e){
+      console.warn("Bot reply failed",e);
+    }finally{
+      hostBotReplyBusy=false;
+    }
+  },delay);
+}
+
+function openLeaveModal(){
+  if(!currentRoom)return;
+  const humanOthers=players.filter(p=>p.id!==currentUser?.uid);
+  const txt=isHost
+    ? (humanOthers.length
+        ? `Tu es l’hôte. Le rôle d’hôte sera transféré à ${humanOthers[0].name} avant ton départ.`
+        : `Tu es le dernier joueur humain. La salle sera fermée quand tu partiras.`)
+    : `Tu quitteras la salle et tu pourras immédiatement rejoindre une autre partie.`;
+  $("#leave-modal-text").textContent=txt;
+  $("#leave-modal").classList.remove("hidden");
 }
 
 async function leaveRoom(){
-  if(!currentRoom)return resetHome();
-  const {doc,deleteDoc}=fb.fsMod;
+  if(leavingRoom)return;
+  if(!currentRoom){resetHome();return}
+
+  leavingRoom=true;
+  $("#confirm-leave-btn")?.setAttribute("disabled","disabled");
+
+  const roomCode=currentRoom;
   try{
-    if(isHost)await deleteDoc(doc(db,"rooms",currentRoom));
-    else await deleteDoc(doc(db,"rooms",currentRoom,"players",currentUser.uid));
-  }catch{}
-  resetHome();
-}
-function resetHome(){
-  cleanup();currentRoom=null;currentRoomData=null;players=[];bots=[];assignment=null;localStorage.removeItem("anime_room");show("home")
+    const {doc,deleteDoc,updateDoc}=fb.fsMod;
+    const otherHumans=players
+      .filter(p=>p.id!==currentUser.uid)
+      .sort((a,b)=>{
+        const av=a.joinedAt?.seconds||0;
+        const bv=b.joinedAt?.seconds||0;
+        return av-bv;
+      });
+
+    if(isHost){
+      if(otherHumans.length){
+        const nextHost=otherHumans[0];
+
+        // L'ancien hôte a encore le droit de modifier la salle à cet instant.
+        await updateDoc(doc(db,"rooms",roomCode),{
+          hostUid:nextHost.id
+        });
+
+        // Ensuite il quitte comme un joueur normal.
+        await deleteDoc(doc(db,"rooms",roomCode,"players",currentUser.uid));
+        toast("Salle quittée",`${nextHost.name} est maintenant l’hôte.`);
+      }else{
+        // Pas d'autre humain : marque d'abord la salle fermée.
+        // Les sous-collections Firestore peuvent rester, mais plus aucun client
+        // ne les utilise car le document de salle est supprimé.
+        try{
+          await updateDoc(doc(db,"rooms",roomCode),{
+            status:"closed",
+            closedAtMs:Date.now()
+          });
+        }catch{}
+        await deleteDoc(doc(db,"rooms",roomCode));
+        toast("Salle fermée");
+      }
+    }else{
+      await deleteDoc(doc(db,"rooms",roomCode,"players",currentUser.uid));
+      toast("Tu as quitté la salle");
+    }
+  }catch(e){
+    console.warn("leaveRoom",e);
+    toast("Départ partiel","Retour à l’accueil. Si besoin, la salle se nettoiera automatiquement.");
+  }finally{
+    leavingRoom=false;
+    $("#confirm-leave-btn")?.removeAttribute("disabled");
+    $("#leave-modal")?.classList.add("hidden");
+    resetHome();
+  }
 }
 
-// PWA install
-window.addEventListener("beforeinstallprompt",e=>{e.preventDefault();installPrompt=e;$("#install-help").textContent="Prêt à être installé comme une vraie app.";});
-window.addEventListener("appinstalled",()=>{installPrompt=null;toast("Application installée")});
+function resetHome(){
+  cleanup();
+  currentRoom=null;
+  currentRoomData=null;
+  isHost=false;
+  players=[];
+  bots=[];
+  assignment=null;
+  botAssignments={};
+  hints=[];
+  messages=[];
+  voteApprovals=[];
+  voteStatuses=[];
+  activeTab="hints";
+  unreadHints=0;
+  unreadChat=0;
+  gameInitKey="";
+  leavingRoom=false;
+  localStorage.removeItem("anime_room");
+
+  $("#toggle-character-btn")?.setAttribute("data-visible","0");
+  $("#character-name").textContent="••••••";
+  $("#character-anime").textContent="Secret";
+  $("#character-photo-wrap")?.classList.add("hidden");
+
+  show("home");
+}
+
+// PWA install — proposée une seule fois après première entrée dans une salle.
+window.addEventListener("beforeinstallprompt",e=>{
+  e.preventDefault();
+  installPrompt=e;
+});
+window.addEventListener("appinstalled",()=>{
+  installPrompt=null;
+  localStorage.setItem(INSTALL_SEEN_KEY,"1");
+  $("#install-modal")?.classList.add("hidden");
+  toast("Application installée");
+});
 async function installApp(){
-  if(installPrompt){installPrompt.prompt();await installPrompt.userChoice;installPrompt=null;return}
+  localStorage.setItem(INSTALL_SEEN_KEY,"1");
+  $("#install-modal")?.classList.add("hidden");
+
+  if(installPrompt){
+    installPrompt.prompt();
+    await installPrompt.userChoice;
+    installPrompt=null;
+    return;
+  }
+
   const isiOS=/iphone|ipad|ipod/i.test(navigator.userAgent);
-  toast("Installation",isiOS?"iPhone : Partager → Sur l’écran d’accueil.":"Chrome : menu ⋮ → Installer l’application / Ajouter à l’écran d’accueil.");
+  toast("Installation",isiOS
+    ?"iPhone : Partager → Sur l’écran d’accueil."
+    :"Chrome : menu ⋮ → Installer l’application / Ajouter à l’écran d’accueil.");
 }
 
 // Events
@@ -773,8 +1032,15 @@ $("#solo-room-btn").addEventListener("click",()=>createRoom({solo:true}).catch(e
 $("#join-room-btn").addEventListener("click",()=>joinRoom().catch(e=>toast("Erreur",e.message)));
 $("#copy-code-btn").addEventListener("click",async()=>{await navigator.clipboard.writeText(currentRoom);toast("Code copié",currentRoom)});
 $("#share-room-btn").addEventListener("click",async()=>{const text=`Rejoins ma salle Anime Imposteur : ${currentRoom}`;if(navigator.share)await navigator.share({title:"Anime Imposteur",text,url:location.href});else{await navigator.clipboard.writeText(text+" "+location.href);toast("Invitation copiée")}});
-$("#install-app-btn").addEventListener("click",installApp);
-$("#leave-room-btn").addEventListener("click",leaveRoom);
+$("#install-now-btn").addEventListener("click",installApp);
+$("#install-later-btn").addEventListener("click",()=>{
+  localStorage.setItem(INSTALL_SEEN_KEY,"1");
+  $("#install-modal").classList.add("hidden");
+});
+$("#leave-room-btn").addEventListener("click",openLeaveModal);
+$("#leave-game-btn").addEventListener("click",openLeaveModal);
+$("#confirm-leave-btn").addEventListener("click",()=>leaveRoom().catch(e=>toast("Erreur",e.message)));
+$("#cancel-leave-btn").addEventListener("click",()=>$("#leave-modal").classList.add("hidden"));
 $("#add-bot-btn").addEventListener("click",openBotModal);
 $("#fill-bots-btn").addEventListener("click",()=>fillBots(4));
 $("#close-bot-modal").addEventListener("click",()=>$("#bot-modal").classList.add("hidden"));

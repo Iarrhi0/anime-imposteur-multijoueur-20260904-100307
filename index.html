@@ -57,25 +57,6 @@
         <button class="btn secondary" id="join-room-btn">Rejoindre à distance</button>
       </div>
 
-      <div class="card install-card">
-        <div>
-          <strong>📱 Installer sur téléphone</strong>
-          <p id="install-help">L’application peut être installée depuis ton navigateur.</p>
-        </div>
-        <button id="install-app-btn" class="mini-install">Installer</button>
-      </div>
-    </section>
-
-    <!-- LOBBY -->
-    <section id="screen-lobby" class="screen">
-      <div class="room-head card">
-        <span class="eyebrow">CODE À PARTAGER</span>
-        <div id="room-code" class="room-code">X7K2P</div>
-        <div class="room-actions">
-          <button id="copy-code-btn" class="mini-btn">Copier</button>
-          <button id="share-room-btn" class="mini-btn">Partager</button>
-        </div>
-      </div>
 
       <div class="card">
         <div class="section-title">
@@ -175,21 +156,27 @@
     <section id="screen-game" class="screen game-screen">
       <div class="game-sticky">
         <div class="game-top">
-          <div>
+          <div class="game-room-meta">
             <span class="eyebrow">SALLE <b id="game-room-code">X7K2P</b></span>
             <div id="game-round-label" class="game-round">Partie 1 • Manche 1</div>
           </div>
-          <button id="propose-vote-btn" class="propose-vote">🗳️ PROPOSER UN VOTE</button>
+          <div class="game-top-actions">
+            <button id="propose-vote-btn" class="propose-vote">🗳️ VOTE</button>
+            <button id="leave-game-btn" class="leave-game-btn" aria-label="Quitter la salle">↩ Quitter</button>
+          </div>
         </div>
       </div>
 
       <div class="character-mini card">
-        <div>
+        <div id="character-photo-wrap" class="character-photo-wrap hidden">
+          <img id="character-photo" class="character-photo" alt="">
+        </div>
+        <div class="character-info">
           <span class="eyebrow">TON PERSONNAGE</span>
           <strong id="character-name">••••••</strong>
           <small id="character-anime">Secret</small>
         </div>
-        <button id="toggle-character-btn" class="mini-btn">Voir</button>
+        <button id="toggle-character-btn" class="character-toggle">Voir</button>
       </div>
 
       <div class="card players-card">
@@ -237,7 +224,7 @@
         </div>
         <div id="chat-composer" class="chat-composer">
           <input id="chat-input" maxlength="300" placeholder="Écrire un message…">
-          <button id="send-chat-btn" class="send-btn">Envoyer</button>
+          <button id="send-chat-btn" class="send-icon-btn" aria-label="Envoyer">➤</button>
         </div>
       </section>
 
@@ -271,6 +258,18 @@
         <div class="card result-card">
           <div id="result-emoji" class="result-emoji">🏆</div>
           <h2 id="result-title">Victoire</h2>
+          <div id="result-images" class="result-images hidden">
+            <div class="result-character">
+              <img id="result-majority-photo" alt="">
+              <small>Personnage commun</small>
+              <strong id="result-majority-name"></strong>
+            </div>
+            <div class="result-character">
+              <img id="result-impostor-photo" alt="">
+              <small>Imposteur</small>
+              <strong id="result-impostor-name"></strong>
+            </div>
+          </div>
           <div id="result-text"></div>
         </div>
 
@@ -281,7 +280,7 @@
           <div id="post-chat-list" class="post-chat-list"></div>
           <div class="composer">
             <input id="post-chat-input" maxlength="300" placeholder="Continuer la discussion…">
-            <button id="send-post-chat-btn" class="send-btn">Envoyer</button>
+            <button id="send-post-chat-btn" class="send-icon-btn" aria-label="Envoyer">➤</button>
           </div>
         </div>
 
@@ -297,6 +296,30 @@
         </div>
       </section>
     </section>
+
+
+
+    <!-- QUITTER UNE SALLE -->
+    <div id="leave-modal" class="modal-backdrop hidden">
+      <div class="modal leave-modal">
+        <div class="leave-icon">↩</div>
+        <h3>Quitter cette salle ?</h3>
+        <p id="leave-modal-text">Tu pourras rejoindre une autre salle juste après.</p>
+        <button id="confirm-leave-btn" class="btn danger-leave">Quitter la salle</button>
+        <button id="cancel-leave-btn" class="btn secondary">Rester</button>
+      </div>
+    </div>
+
+    <!-- INSTALLATION : proposée une seule fois après la première entrée dans une salle -->
+    <div id="install-modal" class="modal-backdrop hidden">
+      <div class="modal install-modal">
+        <div class="install-app-icon">📱</div>
+        <h3>Installer Anime Imposteur ?</h3>
+        <p>Ajoute le jeu sur ton téléphone pour l’ouvrir comme une vraie application.</p>
+        <button id="install-now-btn" class="btn primary">Installer</button>
+        <button id="install-later-btn" class="btn danger-ghost">Pas maintenant</button>
+      </div>
+    </div>
 
     <!-- BOT MODAL -->
     <div id="bot-modal" class="modal-backdrop hidden">
