@@ -3,32 +3,38 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="theme-color" content="#090b14">
+  <meta name="theme-color" content="#07111f">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Anime Imposteur">
   <title>Anime Imposteur</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
+  <div id="toast-layer" class="toast-layer"></div>
+
   <main class="app">
     <header class="brand">
       <div class="logo">🎭</div>
-      <div>
+      <div class="brand-copy">
         <h1>Anime Imposteur</h1>
-        <p>Lobby multijoueur • IA de similarité</p>
+        <p>Multijoueur à distance • IA • installable</p>
       </div>
-      <div id="connection-dot" class="connection-dot" title="Connexion"></div>
+      <div id="connection-dot" class="connection-dot"></div>
     </header>
 
-    <div id="fatal-config" class="fatal hidden">
-      <strong>Firebase n’est pas encore configuré.</strong>
-      <span>Lance d’abord <b>1_SETUP_FIREBASE.bat</b>, puis publie avec <b>2_PUBLISH_GITHUB.bat</b>.</span>
-    </div>
+    <div id="fatal-config" class="fatal hidden"></div>
 
     <!-- HOME -->
     <section id="screen-home" class="screen active">
       <div class="hero card">
-        <span class="eyebrow">MULTIJOUEUR</span>
-        <h2>Un salon. Plusieurs téléphones.</h2>
-        <p>Crée un salon ou rejoins tes amis avec un code. Un seul joueur recevra le personnage différent.</p>
+        <span class="eyebrow">EN LIGNE</span>
+        <h2>Joue avec tes amis… ou seul contre l’IA.</h2>
+        <p>Chaque téléphone rejoint la même salle avec un code. Tu peux aussi créer une salle avec quatre IA immédiatement.</p>
       </div>
 
       <div class="card">
@@ -36,26 +42,39 @@
           <span>Ton pseudo</span>
           <input id="home-name" maxlength="20" placeholder="Kevin" autocomplete="nickname">
         </label>
-        <button class="btn primary" id="create-room-btn">Créer un salon</button>
+
+        <button class="btn primary" id="create-room-btn">Créer une salle</button>
+        <button class="btn ai-btn" id="solo-room-btn">🤖 Jouer seul contre 4 IA</button>
       </div>
 
       <div class="divider"><span>OU</span></div>
 
       <div class="card">
         <label class="field">
-          <span>Code du salon</span>
-          <input id="join-code" maxlength="5" placeholder="AK7P" class="code-input" autocomplete="off">
+          <span>Code de la salle</span>
+          <input id="join-code" maxlength="5" placeholder="X7K2P" class="code-input" autocomplete="off">
         </label>
-        <button class="btn secondary" id="join-room-btn">Rejoindre le salon</button>
+        <button class="btn secondary" id="join-room-btn">Rejoindre à distance</button>
+      </div>
+
+      <div class="card install-card">
+        <div>
+          <strong>📱 Installer sur téléphone</strong>
+          <p id="install-help">L’application peut être installée depuis ton navigateur.</p>
+        </div>
+        <button id="install-app-btn" class="mini-install">Installer</button>
       </div>
     </section>
 
     <!-- LOBBY -->
     <section id="screen-lobby" class="screen">
       <div class="room-head card">
-        <span class="eyebrow">CODE DU SALON</span>
-        <div id="room-code" class="room-code">AK7P</div>
-        <button id="copy-code-btn" class="mini-btn">Copier le code</button>
+        <span class="eyebrow">CODE À PARTAGER</span>
+        <div id="room-code" class="room-code">X7K2P</div>
+        <div class="room-actions">
+          <button id="copy-code-btn" class="mini-btn">Copier</button>
+          <button id="share-room-btn" class="mini-btn">Partager</button>
+        </div>
       </div>
 
       <div class="card">
@@ -70,40 +89,39 @@
       </div>
 
       <div id="host-panel" class="hidden">
-        <button class="btn bot-btn" id="add-bot-btn">🤖 Ajouter une IA locale</button>
+        <div class="host-actions">
+          <button class="btn bot-btn" id="add-bot-btn">🤖 Ajouter une IA</button>
+          <button class="btn secondary" id="fill-bots-btn">+ Remplir avec 4 IA</button>
+        </div>
 
         <div class="card">
           <div class="section-title">
             <div>
-              <h3>Univers</h3>
-              <p>Réglages de la manche</p>
+              <h3>IA de personnages</h3>
+              <p>Duos connus et réellement proches</p>
             </div>
           </div>
 
           <div class="segmented">
-            <button class="segment active" data-mode="auto">🤖 Auto</button>
-            <button class="segment" data-mode="manual">🎯 Manuel</button>
+            <button class="segment active" data-mode="auto">Tous les animes</button>
+            <button class="segment" data-mode="manual">Mes animes</button>
           </div>
 
           <label class="check-row">
             <input type="checkbox" id="mix-anime" checked>
             <span>
               <strong>Mélanger les univers</strong>
-              <small>Kakashi vs Gojo, Levi vs Itachi, Shanks vs Gildarts…</small>
+              <small>Levi/Itachi • Kakashi/Gojo • Shanks/Gildarts…</small>
             </span>
           </label>
 
           <div class="ai-brain">
-            <div class="ai-brain-head">
-              <span class="ai-badge">IA ACTIVE</span>
-              <span class="ai-dot"></span>
-            </div>
+            <span class="ai-badge">IA ACTIVE</span>
             <strong id="ai-status">Analyse des duos…</strong>
-            <small id="ai-details">Apparence, personnalité, rôle, combat, histoire et aura.</small>
+            <small id="ai-details"></small>
           </div>
 
           <div id="manual-anime-panel" class="hidden">
-            <p class="helper">Décoche les univers que vous ne connaissez pas.</p>
             <div id="anime-grid" class="anime-grid"></div>
           </div>
         </div>
@@ -111,15 +129,34 @@
         <div class="card">
           <div class="section-title">
             <div>
-              <h3>Difficulté</h3>
-              <p>Plus le niveau monte, plus les personnages se ressemblent</p>
+              <h3>Règles</h3>
+              <p>Réglages conservés pour la salle</p>
             </div>
           </div>
+
           <div class="segmented three">
             <button class="segment" data-difficulty="easy">Facile</button>
             <button class="segment" data-difficulty="normal">Normal</button>
             <button class="segment active" data-difficulty="hard">Difficile IA</button>
           </div>
+
+          <label class="check-row">
+            <input type="checkbox" id="hidden-hints">
+            <span>
+              <strong>Indices cachés</strong>
+              <small>Optionnel. Par défaut, les indices sont révélés dans l’ordre.</small>
+            </span>
+          </label>
+
+          <label class="field compact">
+            <span>Délai pour changer de vote</span>
+            <select id="reconsider-seconds">
+              <option value="10">10 secondes</option>
+              <option value="15" selected>15 secondes</option>
+              <option value="20">20 secondes</option>
+              <option value="30">30 secondes</option>
+            </select>
+          </label>
         </div>
 
         <button class="btn primary" id="start-game-btn">Commencer la partie</button>
@@ -128,56 +165,149 @@
       <div id="guest-wait" class="card waiting hidden">
         <div class="loader"></div>
         <h3>En attente de l’hôte</h3>
-        <p>L’hôte lancera la partie quand tout le monde sera prêt.</p>
+        <p>La salle est synchronisée en temps réel.</p>
       </div>
 
-      <button class="btn danger-ghost" id="leave-room-btn">Quitter le salon</button>
+      <button class="btn danger-ghost" id="leave-room-btn">Quitter la salle</button>
     </section>
 
-    <!-- SECRET -->
-    <section id="screen-secret" class="screen">
-      <div class="card secret-top">
-        <span class="eyebrow">PARTIE EN COURS</span>
-        <h2 id="secret-player-name">Joueur</h2>
-        <p>Ton personnage est secret.</p>
-      </div>
-
-      <div class="character-card">
-        <div id="character-question" class="question">?</div>
-        <div id="character-content" class="hidden">
-          <div id="character-name" class="character-name">Naruto</div>
-          <div id="character-anime" class="character-anime">Naruto</div>
+    <!-- GAME -->
+    <section id="screen-game" class="screen game-screen">
+      <div class="game-sticky">
+        <div class="game-top">
+          <div>
+            <span class="eyebrow">SALLE <b id="game-room-code">X7K2P</b></span>
+            <div id="game-round-label" class="game-round">Partie 1 • Manche 1</div>
+          </div>
+          <button id="propose-vote-btn" class="propose-vote">🗳️ PROPOSER UN VOTE</button>
         </div>
       </div>
 
-      <button id="reveal-character-btn" class="btn primary">👁 Voir mon personnage</button>
-      <button id="hide-character-btn" class="btn secondary hidden">🙈 Cacher</button>
-
-      <div class="notice">
-        <strong>Le jeu ne dit jamais si tu es l’imposteur.</strong>
-        <span>Compare les indices donnés par les autres pour le découvrir.</span>
+      <div class="character-mini card">
+        <div>
+          <span class="eyebrow">TON PERSONNAGE</span>
+          <strong id="character-name">••••••</strong>
+          <small id="character-anime">Secret</small>
+        </div>
+        <button id="toggle-character-btn" class="mini-btn">Voir</button>
       </div>
 
-      <div id="host-game-controls" class="hidden">
-        <button id="back-lobby-btn" class="btn secondary">Terminer la manche</button>
+      <div class="card players-card">
+        <div class="section-title">
+          <div><h3>Participants</h3><p id="phase-label">Indices</p></div>
+        </div>
+        <div id="game-players" class="players-horizontal"></div>
       </div>
+
+      <div class="tabs">
+        <button class="tab active" data-game-tab="hints">🧩 Indices <span id="hints-badge" class="badge hidden">0</span></button>
+        <button class="tab" data-game-tab="chat">💬 Discussion <span id="chat-badge" class="badge hidden">0</span></button>
+      </div>
+
+      <section id="game-hints-panel">
+        <div class="card">
+          <div class="section-title">
+            <div><h3>Tour d’indices</h3><p id="turn-help">Un mot par joueur</p></div>
+            <button id="next-hint-round-btn" class="mini-btn hidden">+ Manche</button>
+          </div>
+
+          <div id="turn-box" class="turn-box"></div>
+
+          <div id="hint-composer" class="composer hidden">
+            <input id="hint-input" maxlength="22" placeholder="Un seul mot…">
+            <button id="send-hint-btn" class="send-btn">Envoyer</button>
+          </div>
+
+          <div class="scroll-head">
+            <span>Historique</span>
+            <span id="hint-count">0</span>
+          </div>
+          <div class="hints-scroll">
+            <div id="hints-list" class="hints-list"></div>
+          </div>
+        </div>
+      </section>
+
+      <section id="game-chat-panel" class="hidden discussion-panel">
+        <div class="card discussion-card">
+          <div class="section-title">
+            <div><h3>Discussion libre</h3><p>Explique, accuse, défends-toi ou bluffe.</p></div>
+          </div>
+          <div id="chat-list" class="chat-list"></div>
+        </div>
+        <div id="chat-composer" class="chat-composer">
+          <input id="chat-input" maxlength="300" placeholder="Écrire un message…">
+          <button id="send-chat-btn" class="send-btn">Envoyer</button>
+        </div>
+      </section>
+
+      <section id="vote-request-panel" class="card hidden">
+        <div class="section-title">
+          <div><h3>🗳️ Proposition de vote</h3><p id="vote-request-by"></p></div>
+        </div>
+        <div class="progress"><div id="vote-request-progress"></div></div>
+        <div id="vote-request-stats" class="vote-request-stats"></div>
+        <div id="vote-request-actions" class="two-actions"></div>
+      </section>
+
+      <section id="voting-panel" class="card hidden">
+        <div class="vote-head">
+          <div>
+            <h3>🗳️ Vote</h3>
+            <p id="vote-stage-help">Choisis ton suspect.</p>
+          </div>
+          <div id="vote-timer" class="timer hidden">15</div>
+        </div>
+
+        <div id="vote-status-list" class="vote-status-list"></div>
+        <div id="vote-choices" class="vote-grid"></div>
+        <div id="my-vote-label" class="my-vote-label">Aucun choix.</div>
+
+        <button id="submit-vote-btn" class="btn primary">Envoyer mon vote</button>
+        <button id="confirm-vote-btn" class="btn confirm hidden">✅ Confirmer définitivement</button>
+      </section>
+
+      <section id="result-panel" class="hidden">
+        <div class="card result-card">
+          <div id="result-emoji" class="result-emoji">🏆</div>
+          <h2 id="result-title">Victoire</h2>
+          <div id="result-text"></div>
+        </div>
+
+        <div class="card">
+          <div class="section-title">
+            <div><h3>💬 Discussion après le vote</h3><p>La salle reste ouverte.</p></div>
+          </div>
+          <div id="post-chat-list" class="post-chat-list"></div>
+          <div class="composer">
+            <input id="post-chat-input" maxlength="300" placeholder="Continuer la discussion…">
+            <button id="send-post-chat-btn" class="send-btn">Envoyer</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="section-title"><div><h3>🏆 Score</h3><p>Conservé dans cette salle</p></div></div>
+          <div id="score-list" class="score-list"></div>
+        </div>
+
+        <div id="host-next-game" class="card host-next hidden">
+          <h3>👑 Hôte</h3>
+          <p>Quand tout le monde a fini de discuter, relance une nouvelle partie sans quitter la salle.</p>
+          <button id="next-game-btn" class="btn primary">🔄 Nouvelle partie — même salle</button>
+        </div>
+      </section>
     </section>
 
     <!-- BOT MODAL -->
     <div id="bot-modal" class="modal-backdrop hidden">
       <div class="modal">
         <div class="section-title">
-          <div>
-            <h3>Ajouter une IA locale</h3>
-            <p>Participant simulé</p>
-          </div>
+          <div><h3>Ajouter une IA</h3><p>Elle joue réellement les indices, discussions et votes.</p></div>
           <button id="close-bot-modal" class="x-btn">×</button>
         </div>
         <div id="bot-options" class="stack"></div>
       </div>
     </div>
-
-    <div id="toast" class="toast hidden"></div>
   </main>
 
   <script type="module" src="app.js"></script>
