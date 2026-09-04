@@ -1,4 +1,4 @@
-const CACHE="anime-imposteur-v6-6";
+const CACHE="anime-imposteur-v6-7";
 const ASSETS=["./","./index.html","./style.css","./app.js","./ai-engine.js","./bot-engine.js","./manifest.webmanifest","./icons/icon-192.png","./icons/icon-512.png"];
 
 self.addEventListener("install",event=>{

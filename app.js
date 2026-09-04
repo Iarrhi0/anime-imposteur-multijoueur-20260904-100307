@@ -1,9 +1,9 @@
 import { firebaseConfig } from "./firebase-config.js";
-import { animeDB, chooseIntelligentPair, getAiStats } from "./ai-engine.js";
+import { animeDB, chooseIntelligentPair, getAiStats } from "./ai-engine.js?v=6.7";
 import {
   chooseBotHint, chooseBotVote, botVoteApproval, buildBotDiscussion,
   shouldBotReply, botReplyDelay
-} from "./bot-engine.js";
+} from "./bot-engine.js?v=6.7";
 
 const $=s=>document.querySelector(s);
 const $$=s=>[...document.querySelectorAll(s)];
@@ -31,6 +31,8 @@ let hostReconsiderTimer=null;
 let hostBotDiscussionTimer=null;
 let hostLastBotReplyToMessageId=null;
 let hostBotReplyBusy=false;
+let botAssignmentsSubscribed=false;
+let lastRoundCommentKey="";
 let leavingRoom=false;
 
 const unsubs=[];
@@ -40,6 +42,8 @@ function cleanup(){
   while(unsubs.length){try{unsubs.pop()()}catch{}}
   clearTimeout(hostReconsiderTimer);
   clearTimeout(hostBotDiscussionTimer);
+  botAssignmentsSubscribed=false;
+  hostBotReplyBusy=false;
 }
 
 function show(id){
@@ -82,11 +86,30 @@ function fallbackCharacterImage(name){
   return "data:image/svg+xml;charset=utf-8,"+encodeURIComponent(svg);
 }
 
+const CHARACTER_SEARCH_ALIASES={
+  "Sosuke Aizen":"Aizen Sousuke",
+  "Satoru Gojo":"Gojo Satoru",
+  "Shigeo Kageyama (Mob)":"Kageyama Shigeo",
+  "Kusuo Saiki":"Saiki Kusuo",
+  "Kyojuro Rengoku":"Rengoku Kyoujurou",
+  "Gildarts Clive":"Gildarts Clive"
+};
+
+async function fetchWithTimeout(url,options={},ms=5500){
+  const controller=new AbortController();
+  const t=setTimeout(()=>controller.abort(),ms);
+  try{
+    return await fetch(url,{...options,signal:controller.signal});
+  }finally{
+    clearTimeout(t);
+  }
+}
+
 async function getCharacterImage(name){
   if(!name)return null;
   if(characterImageCache.has(name))return characterImageCache.get(name);
 
-  const storageKey="anime_char_img_"+name;
+  const storageKey="anime_char_img_v67_"+name;
   try{
     const cached=localStorage.getItem(storageKey);
     if(cached){
@@ -95,30 +118,72 @@ async function getCharacterImage(name){
     }
   }catch{}
 
+  const search=CHARACTER_SEARCH_ALIASES[name]||name;
+
+  // Provider 1: Jikan / MyAnimeList
   try{
-    const url=`https://api.jikan.moe/v4/characters?q=${encodeURIComponent(name)}&limit=1`;
-    const res=await fetch(url,{headers:{"Accept":"application/json"}});
-    if(!res.ok)throw new Error("image api");
-    const data=await res.json();
-    const image=data?.data?.[0]?.images?.jpg?.image_url || data?.data?.[0]?.images?.webp?.image_url || null;
-    if(image){
-      characterImageCache.set(name,image);
-      try{localStorage.setItem(storageKey,image)}catch{}
-      return image;
+    const url=`https://api.jikan.moe/v4/characters?q=${encodeURIComponent(search)}&limit=5`;
+    const res=await fetchWithTimeout(url,{headers:{Accept:"application/json"}},5500);
+    if(res.ok){
+      const data=await res.json();
+      const normalized=search.toLowerCase().replace(/[^a-z0-9]/g,"");
+      const candidate=(data?.data||[]).find(x=>{
+        const n=String(x.name||"").toLowerCase().replace(/[^a-z0-9]/g,"");
+        return n.includes(normalized)||normalized.includes(n);
+      }) || data?.data?.[0];
+
+      const image=candidate?.images?.webp?.image_url || candidate?.images?.jpg?.image_url;
+      if(image){
+        characterImageCache.set(name,image);
+        try{localStorage.setItem(storageKey,image)}catch{}
+        return image;
+      }
     }
   }catch(e){
-    console.warn("Character image unavailable:",name,e);
+    console.warn("Jikan image failed",name,e);
   }
 
-  const fallback=fallbackCharacterImage(name);
-  characterImageCache.set(name,fallback);
-  return fallback;
+  // Provider 2: AniList
+  try{
+    const query=`query ($search:String){ Character(search:$search){ name{full} image{large medium} } }`;
+    const res=await fetchWithTimeout("https://graphql.anilist.co",{
+      method:"POST",
+      headers:{"Content-Type":"application/json","Accept":"application/json"},
+      body:JSON.stringify({query,variables:{search}})
+    },5500);
+
+    if(res.ok){
+      const data=await res.json();
+      const image=data?.data?.Character?.image?.large || data?.data?.Character?.image?.medium;
+      if(image){
+        characterImageCache.set(name,image);
+        try{localStorage.setItem(storageKey,image)}catch{}
+        return image;
+      }
+    }
+  }catch(e){
+    console.warn("AniList image failed",name,e);
+  }
+
+  return fallbackCharacterImage(name);
 }
 
 async function setCharacterPhoto(imgEl,name){
   if(!imgEl)return;
-  imgEl.src=await getCharacterImage(name);
+  imgEl.classList.add("photo-loading");
   imgEl.alt=name||"Personnage";
+  imgEl.onerror=()=>{
+    imgEl.onerror=null;
+    imgEl.src=fallbackCharacterImage(name);
+    imgEl.classList.remove("photo-loading");
+  };
+
+  try{
+    const src=await getCharacterImage(name);
+    imgEl.src=src||fallbackCharacterImage(name);
+  }finally{
+    imgEl.classList.remove("photo-loading");
+  }
 }
 
 function maybeOfferInstallOnce(){
@@ -316,6 +381,13 @@ async function enterRoom(code){
     const prev=currentRoomData;
     currentRoomData=snap.data();
     isHost=currentRoomData.hostUid===currentUser.uid;
+
+    // IMPORTANT V6.7: isHost becomes known only after this snapshot.
+    // Subscribe to bot secret assignments here, not before.
+    if(isHost && !botAssignmentsSubscribed){
+      subscribeBotAssignments();
+    }
+
     renderRoomRole();
     routeByStatus(prev);
     renderGameHeader();
@@ -368,17 +440,19 @@ async function enterRoom(code){
     assignment=snap.exists()?snap.data():null;renderCharacter();
   }));
 
-  // Host-only bot assignments
-  if(isHost) subscribeBotAssignments();
 }
 
 function subscribeBotAssignments(){
-  if(!currentRoom||!fb)return;
+  if(!currentRoom||!fb||botAssignmentsSubscribed)return;
+  botAssignmentsSubscribed=true;
   const {collection,onSnapshot}=fb.fsMod;
   const unsub=onSnapshot(collection(db,"rooms",currentRoom,"botAssignments"),snap=>{
     botAssignments={};
     snap.docs.forEach(d=>botAssignments[d.id]=d.data());
     if(isHost)hostTick().catch(console.error);
+  },err=>{
+    console.error("botAssignments subscription",err);
+    botAssignmentsSubscribed=false;
   });
   unsubs.push(unsub);
 }
@@ -485,17 +559,44 @@ async function renderCharacter(){
 
 function renderTurn(){
   if(!currentRoomData||currentRoomData.status!=="playing")return;
+
   const order=orderedParticipants();
   const p=order[currentRoomData.turnIndex];
   const complete=currentRoomData.turnIndex>=order.length;
+  const input=$("#hint-input");
+  const send=$("#send-hint-btn");
+
+  // The field is ALWAYS visible. When it isn't your turn it is disabled,
+  // so the player understands why they cannot type.
+  $("#hint-composer").classList.remove("hidden");
   $("#next-hint-round-btn").classList.toggle("hidden",!(isHost&&complete));
+
   if(complete){
-    $("#turn-box").innerHTML=`<strong>Tout le monde a joué.</strong><small>Discutez, proposez un vote ou l’hôte peut lancer une nouvelle manche d’indices.</small>`;
-    $("#hint-composer").classList.add("hidden");
+    $("#turn-box").innerHTML=`<strong>Tout le monde a joué.</strong><small>Discutez, proposez un vote ou lancez une nouvelle manche.</small>`;
+    input.disabled=true;
+    send.disabled=true;
+    input.placeholder="Manche terminée";
     return;
   }
-  $("#turn-box").innerHTML=`<small>C’EST AU TOUR DE</small><strong>${esc(p?.name||"...")}</strong><small>${p?.id===currentUser.uid?"Donne un seul mot.":"En attente de son indice…"}</small>`;
-  $("#hint-composer").classList.toggle("hidden",p?.id!==currentUser.uid);
+
+  if(!p){
+    $("#turn-box").innerHTML=`<strong>Préparation du tour…</strong><small>Synchronisation des joueurs.</small>`;
+    input.disabled=true;
+    send.disabled=true;
+    input.placeholder="Préparation…";
+    return;
+  }
+
+  const mine=p.id===currentUser.uid;
+  $("#turn-box").innerHTML=`<small>C’EST AU TOUR DE</small><strong>${esc(p.name)}</strong><small>${mine?"Écris un seul mot.":p.bot?"L’IA réfléchit…":"En attente de son indice…"}</small>`;
+
+  input.disabled=!mine;
+  send.disabled=!mine;
+  input.placeholder=mine?"Ton indice (1 mot)…":`${p.name} joue…`;
+
+  if(mine){
+    setTimeout(()=>input.focus({preventScroll:true}),80);
+  }
 }
 
 function currentGameHints(){return hints.filter(h=>h.gameNo===currentRoomData?.gameNo)}
@@ -658,9 +759,15 @@ async function startGame(){
 
   await Promise.all(all.map(p=>{
     const char=p.id===impostor.id?outsider:majority;
-    return p.bot
-      ? setDoc(doc(db,"rooms",currentRoom,"botAssignments",p.id),{...char,gameNo})
-      : setDoc(doc(db,"rooms",currentRoom,"assignments",p.id),{...char,gameNo});
+
+    // Keep a local host copy immediately so a bot can play without
+    // waiting for the Firestore listener to round-trip.
+    if(p.bot){
+      botAssignments[p.id]={...char,gameNo};
+      return setDoc(doc(db,"rooms",currentRoom,"botAssignments",p.id),{...char,gameNo});
+    }
+
+    return setDoc(doc(db,"rooms",currentRoom,"assignments",p.id),{...char,gameNo});
   }));
 
   await setDoc(doc(db,"rooms",currentRoom,"secrets","current"),{
@@ -817,7 +924,28 @@ async function hostProcessTurn(){
   const existing=currentGameHints().find(h=>h.round===currentRoomData.hintRound&&h.playerId===p.id);
 
   if(p.bot&&!existing){
-    const char=botAssignments[p.id];if(!char||char.gameNo!==currentRoomData.gameNo)return;
+    let char=botAssignments[p.id];
+
+    if(!char || char.gameNo!==currentRoomData.gameNo){
+      try{
+        const snap=await fb.fsMod.getDoc(
+          fb.fsMod.doc(db,"rooms",currentRoom,"botAssignments",p.id)
+        );
+        if(snap.exists()){
+          char=snap.data();
+          botAssignments[p.id]=char;
+        }
+      }catch(e){
+        console.error("bot assignment read",e);
+      }
+    }
+
+    if(!char || char.gameNo!==currentRoomData.gameNo){
+      // Don't freeze forever: retry hostTick shortly.
+      setTimeout(()=>{ if(isHost) hostTick().catch(console.error); },500);
+      return;
+    }
+
     const word=chooseBotHint(char.name,currentGameHints().map(h=>h.word));
     const {doc,setDoc,serverTimestamp}=fb.fsMod;
     await setDoc(doc(db,"rooms",currentRoom,"hints",`g${currentRoomData.gameNo}_r${currentRoomData.hintRound}_${p.id}`),{
@@ -835,6 +963,40 @@ async function hostProcessTurn(){
     await batch.commit();
   }
   await fb.fsMod.updateDoc(fb.fsMod.doc(db,"rooms",currentRoom),{turnIndex:next});
+
+  if(next>=order.length){
+    setTimeout(()=>maybeBotCommentAfterRound().catch(console.error),250);
+  }
+}
+
+
+async function maybeBotCommentAfterRound(){
+  if(!isHost || currentRoomData?.status!=="playing" || !bots.length)return;
+
+  const order=orderedParticipants();
+  if((currentRoomData.turnIndex||0) < order.length)return;
+
+  const key=`${currentRoomData.gameNo}_${currentRoomData.hintRound}`;
+  if(lastRoundCommentKey===key)return;
+  lastRoundCommentKey=key;
+
+  const available=bots.filter(b=>botAssignments[b.id]);
+  if(!available.length)return;
+
+  // Only about 75% of completed rounds get an IA comment.
+  if(Math.random()>.75)return;
+
+  const b=available[Math.floor(Math.random()*available.length)];
+  const a=botAssignments[b.id];
+  const text=buildBotDiscussion(
+    b.name,a.name,currentGameHints(),messages,participants()
+  );
+
+  setTimeout(()=>{
+    if(isHost && currentRoomData?.status==="playing"){
+      sendMessage(text,false,b.id,b.name).catch(console.error);
+    }
+  },650+Math.floor(Math.random()*900));
 }
 
 async function hostProcessVoteRequest(){
@@ -953,38 +1115,62 @@ async function maybeBotDiscuss(){
   const last=messages[messages.length-1];
   if(!last)return;
 
-  // Never let bots trigger an endless bot-to-bot chain.
+  // No bot-to-bot infinite chain.
   if(String(last.playerId||"").startsWith("bot_"))return;
 
   const messageId=last.id||`${last.playerId}_${last.createdMs||0}`;
   if(hostLastBotReplyToMessageId===messageId)return;
 
-  const candidates=bots.filter(b=>{
-    const a=botAssignments[b.id];
-    return a && shouldBotReply(b.name,last,messages);
-  });
+  const lower=String(last.text||"").toLowerCase();
+  const directlyNamed=bots.find(b=>lower.includes(String(b.name||"").toLowerCase()));
+  const isQuestion=/\?|pourquoi|comment|qui |quoi|quel|quelle/i.test(last.text||"");
 
-  if(!candidates.length)return;
+  let candidate=null;
 
-  // At most one IA responds to one human message most of the time.
-  const b=candidates[Math.floor(Math.random()*candidates.length)];
-  const a=botAssignments[b.id];
-  const delay=botReplyDelay(b.name,last);
+  if(directlyNamed && botAssignments[directlyNamed.id]){
+    candidate=directlyNamed;
+  }else{
+    let possible=bots.filter(b=>{
+      const a=botAssignments[b.id];
+      return a && shouldBotReply(b.name,last,messages);
+    });
+
+    // Questions should almost always get an answer.
+    if(!possible.length && isQuestion){
+      possible=bots.filter(b=>botAssignments[b.id]);
+    }
+
+    // Normal statement: one bot answers roughly 70% of the time.
+    if(!possible.length && Math.random()<.70){
+      possible=bots.filter(b=>botAssignments[b.id]);
+    }
+
+    if(possible.length){
+      candidate=possible[Math.floor(Math.random()*possible.length)];
+    }
+  }
+
+  if(!candidate)return;
+
+  const a=botAssignments[candidate.id];
+  if(!a)return;
 
   hostLastBotReplyToMessageId=messageId;
   hostBotReplyBusy=true;
+
+  const delay=Math.max(500,Math.min(2200,botReplyDelay(candidate.name,last)));
 
   hostBotDiscussionTimer=setTimeout(async()=>{
     try{
       if(currentRoomData?.status!=="playing")return;
       const text=buildBotDiscussion(
-        b.name,
+        candidate.name,
         a.name,
         currentGameHints(),
         messages,
         participants()
       );
-      await sendMessage(text,false,b.id,b.name);
+      await sendMessage(text,false,candidate.id,candidate.name);
     }catch(e){
       console.warn("Bot reply failed",e);
     }finally{

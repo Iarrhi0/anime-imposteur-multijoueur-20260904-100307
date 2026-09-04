@@ -705,6 +705,129 @@ function evaluatePair(a, b) {
   };
 }
 
+
+// V6.7 : seules les paires ci-dessous sont admises par le jeu.
+// Elles ont été retenues manuellement pour leur proximité réelle et leur notoriété.
+// On ne génère plus de "duo difficile" à partir de simples tags génériques.
+const VERIFIED_GAME_PAIRS = [
+  ["Kakashi Hatake","Satoru Gojo",98,[
+    "cheveux très clairs et dressés","yeux cachés ou couverts","pouvoir oculaire majeur",
+    "professeurs","mentors protecteurs","attitude détendue","sarcasme","combattants d'élite",
+    "grande vitesse","analyse tactique"
+  ]],
+  ["Shanks","Gildarts Clive",97,[
+    "hommes mûrs","cheveux chauds","barbe légère","cicatrices","vêtements de voyageur",
+    "attitude détendue","vétérans","puissance exceptionnelle","grande réputation",
+    "apparitions rares mais marquantes"
+  ]],
+  ["Light Yagami","Lelouch Lamperouge",96,[
+    "jeunes génies","cheveux foncés","silhouette mince","étudiants","double identité",
+    "pouvoir secret","manipulation","plans complexes","désir de changer le monde",
+    "moralité ambiguë"
+  ]],
+  ["Sasuke Uchiha","Kurapika",95,[
+    "jeunes prodiges","personnalité réservée","clan massacré","vengeance centrale",
+    "yeux spéciaux","héritage de clan","combat tactique","obsession","amis protecteurs"
+  ]],
+  ["Shigeo Kageyama (Mob)","Kusuo Saiki",95,[
+    "lycéens","apparence discrète","visage neutre","personnalité réservée",
+    "pouvoirs psychiques","télékinésie","puissance énorme","capacités cachées",
+    "désir d'une vie normale"
+  ]],
+  ["Sosuke Aizen","Itachi Uchiha",94,[
+    "cheveux foncés","visage calme","regard contrôlé","intelligence exceptionnelle",
+    "intentions cachées","double jeu","illusion","manipulation de la perception",
+    "combat tactique","secrets majeurs"
+  ]],
+  ["Levi Ackerman","Itachi Uchiha",93,[
+    "cheveux noirs","regard froid","silhouette fine","très calmes","peu bavards",
+    "contrôle émotionnel","combattants d'élite","vitesse","précision","passé tragique",
+    "pertes de proches","sens du devoir"
+  ]],
+  ["Sosuke Aizen","Chrollo Lucilfer",93,[
+    "cheveux sombres","visage calme","apparence élégante","chefs charismatiques",
+    "intelligence stratégique","groupes dangereux","pouvoirs complexes",
+    "manipulation","objectifs difficiles à lire"
+  ]],
+  ["Sasuke Uchiha","Megumi Fushiguro",92,[
+    "cheveux noirs hérissés","regard sombre","silhouette mince","tenues sombres",
+    "personnalité réservée","jeunes prodiges","héritage familial",
+    "techniques de lignée","combat tactique","protecteurs discrets"
+  ]],
+  ["Giyu Tomioka","Levi Ackerman",92,[
+    "cheveux foncés","visage fermé","peu bavards","froids en apparence",
+    "combattants d'élite","armes blanches","grande vitesse","précision",
+    "pertes traumatiques","sens du devoir"
+  ]],
+  ["Byakuya Kuchiki","Itachi Uchiha",91,[
+    "cheveux noirs","visage fin","apparence élégante","regard froid",
+    "émotions contenues","clans importants","devoir familial",
+    "grande vitesse","précision","réputation exceptionnelle"
+  ]],
+  ["Katsuki Bakugo","Vegeta",91,[
+    "regard agressif","orgueil","tempérament explosif","rival du héros",
+    "obsession de progresser","énorme puissance","combattants d'élite",
+    "progression personnelle","respect acquis progressivement"
+  ]],
+  ["Killua Zoldyck","Shoto Todoroki",90,[
+    "jeunes prodiges","apparence claire","personnalité réservée","familles puissantes",
+    "enfance difficile","pression familiale","talent naturel","évolution émotionnelle"
+  ]],
+  ["Jiraiya","Kisuke Urahara",90,[
+    "adultes excentriques","humour","mentors","immense expérience","grande intelligence",
+    "beaucoup de secrets","polyvalence","protègent les jeunes héros"
+  ]],
+  ["Ken Kaneki","Eren Yeager",89,[
+    "jeunes hommes ordinaires au départ","transformation","traumatisme",
+    "pertes de proches","évolution sombre","radicalisation","double nature",
+    "deviennent des figures menaçantes"
+  ]],
+  ["Kyojuro Rengoku","All Might",89,[
+    "personnalité positive","sourire marquant","protecteurs","mentors",
+    "figures admirées","très puissants","inspirent les jeunes","sacrifice"
+  ]],
+  ["Monkey D. Luffy","Naruto Uzumaki",88,[
+    "héros principaux","énergique","optimiste","têtu","grands rêves",
+    "enfance difficile","protègent leurs amis","leadership","puissance croissante"
+  ]],
+  ["Goku","Natsu Dragneel",88,[
+    "cheveux hérissés","énergique","optimiste","aiment combattre","naïveté",
+    "combat rapproché","grande endurance","power-ups","protègent leurs proches"
+  ]],
+  ["Hisoka","Donquixote Doflamingo",87,[
+    "apparence excentrique","sourire inquiétant","provocation","cruauté",
+    "confiance élevée","combattants dangereux","jeu psychologique","imprévisibilité"
+  ]],
+  ["Tanjiro Kamado","Izuku Midoriya",87,[
+    "jeunes héros","apparence peu menaçante","empathie","protection des autres",
+    "détermination","analyse en combat","progression par entraînement","héritage"
+  ]],
+  ["Roronoa Zoro","Erza Scarlet",86,[
+    "épéistes","silhouette athlétique","discipline","loyauté","armes blanches",
+    "grande endurance","précision","combattants d'élite"
+  ]],
+  ["Obito Uchiha","Dabi",86,[
+    "corps marqué","identité cachée","passé traumatique","radicalisation",
+    "liens personnels avec les héros","personnalité froide","secret d'identité"
+  ]],
+  ["Gohan","Shigeo Kageyama (Mob)",86,[
+    "apparence douce","calmes","réservés","fort potentiel","puissance cachée",
+    "préfèrent une vie normale","deviennent terrifiants quand sérieux"
+  ]],
+  ["Asta","Naruto Uzumaki",85,[
+    "héros très déterminés","enfance difficile","rêve immense","têtus",
+    "travail acharné","outsiders","protègent leurs proches","rassemblent les autres"
+  ]],
+  ["Shota Aizawa","Kakashi Hatake",85,[
+    "professeurs","yeux souvent couverts","attitude fatiguée ou détendue",
+    "sarcasme","mentors protecteurs","combat technique","analyse tactique"
+  ]]
+];
+
+const VERIFIED_PAIR_MAP = new Map(
+  VERIFIED_GAME_PAIRS.map(([a,b,score,details]) => [pairKey(a,b), {score,details}])
+);
+
 function difficultyRules(difficulty) {
   if (difficulty === "hard") {
     return {
@@ -740,38 +863,32 @@ export function buildCandidates({
   popularityMin=96
 } = {}) {
   const allowed = new Set(allowedAnime);
-  const pool = characters.filter(c =>
-    c.popularity >= popularityMin && allowed.has(c.anime)
-  );
-
-  const rules = difficultyRules(difficulty);
+  const byName = new Map(characters.map(c => [c.name,c]));
   const out = [];
 
-  for (let i=0;i<pool.length;i++) {
-    for (let j=i+1;j<pool.length;j++) {
-      const a=pool[i], b=pool[j];
-      if (!mix && a.anime !== b.anime) continue;
+  for (const [nameA,nameB,score,details] of VERIFIED_GAME_PAIRS) {
+    const a=byName.get(nameA), b=byName.get(nameB);
+    if(!a || !b) continue;
+    if(a.popularity < popularityMin || b.popularity < popularityMin) continue;
+    if(!allowed.has(a.anime) || !allowed.has(b.anime)) continue;
+    if(!mix && a.anime !== b.anime) continue;
 
-      const ev = evaluatePair(a,b);
+    // Plus les personnages sont proches, plus le jeu est difficile.
+    if(difficulty==="hard" && score < 91) continue;
+    if(difficulty==="normal" && (score < 87 || score > 94)) continue;
+    if(difficulty==="easy" && score > 90) continue;
 
-      // En difficile, priorité aux duos explicitement vérifiés ou aux
-      // rapprochements très forts générés par la base de connaissances.
-      const strongGenerated =
-        ev.score >= 86 &&
-        ev.commonCount >= 8 &&
-        ev.coveredCategories >= 4 &&
-        (ev.appearanceCommon + ev.personalityCommon) >= 2;
-
-      if (rules.requireCuratedOrStrong && !(ev.curated || strongGenerated)) continue;
-      if (ev.score < rules.minScore || ev.score > rules.maxScore) continue;
-      if (ev.commonCount < rules.minCommon) continue;
-      if (ev.coveredCategories < rules.minCategories && !ev.curated) continue;
-
-      // Évite les rapprochements basés uniquement sur "puissant".
-      if (!ev.curated && (ev.appearanceCommon + ev.personalityCommon) < 1) continue;
-
-      out.push(ev);
-    }
+    out.push({
+      a:{anime:a.anime,name:a.name},
+      b:{anime:b.anime,name:b.name},
+      score,
+      commonCount:details.length,
+      coveredCategories:6,
+      appearanceCommon:2,
+      personalityCommon:2,
+      sharedDetails:[...details],
+      curated:true
+    });
   }
 
   return out.sort((x,y)=>y.score-x.score);

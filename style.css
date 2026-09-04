@@ -546,3 +546,22 @@ input,select,button{
     margin:0 auto;
   }
 }
+
+/* V6.7 fixes */
+#hint-input:disabled{
+  opacity:.72;
+  color:#8fa2b6;
+  background:#0a1420;
+}
+#send-hint-btn:disabled{
+  opacity:.45;
+  cursor:not-allowed;
+}
+.character-photo.photo-loading,
+.result-character img.photo-loading{
+  opacity:.45;
+  filter:saturate(.6);
+}
+.character-photo{
+  background:#0a1725;
+}
