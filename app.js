@@ -1,37 +1,5 @@
 import { firebaseConfig } from "./firebase-config.js";
-
-const animeDB = [
-  "Naruto","One Piece","Jujutsu Kaisen","Demon Slayer","Dragon Ball",
-  "Hunter x Hunter","Attack on Titan","Bleach","Fairy Tail","My Hero Academia"
-];
-
-const pairDB = [
-  ["Naruto","Naruto","Naruto","Minato","easy"],
-  ["Naruto","Sasuke","Naruto","Itachi","easy"],
-  ["Naruto","Kakashi","Naruto","Obito","normal"],
-  ["Naruto","Itachi","Naruto","Madara","hard"],
-  ["One Piece","Luffy","One Piece","Ace","easy"],
-  ["One Piece","Zoro","One Piece","Mihawk","normal"],
-  ["One Piece","Sanji","One Piece","Zoro","easy"],
-  ["Jujutsu Kaisen","Gojo","Jujutsu Kaisen","Toji","normal"],
-  ["Jujutsu Kaisen","Yuji","Jujutsu Kaisen","Yuta","hard"],
-  ["Demon Slayer","Tanjiro","Demon Slayer","Giyu","normal"],
-  ["Dragon Ball","Goku","Dragon Ball","Vegeta","easy"],
-  ["Hunter x Hunter","Gon","Hunter x Hunter","Killua","easy"],
-  ["Attack on Titan","Eren","Attack on Titan","Reiner","normal"],
-  ["Bleach","Ichigo","Bleach","Renji","normal"],
-  ["Fairy Tail","Natsu","Fairy Tail","Gray","easy"],
-  ["My Hero Academia","Deku","My Hero Academia","Bakugo","easy"],
-
-  ["Naruto","Kakashi","Jujutsu Kaisen","Gojo","easy"],
-  ["Naruto","Naruto","One Piece","Luffy","easy"],
-  ["Naruto","Sasuke","Hunter x Hunter","Killua","normal"],
-  ["Naruto","Itachi","Attack on Titan","Levi","hard"],
-  ["One Piece","Zoro","Fairy Tail","Erza","normal"],
-  ["Dragon Ball","Goku","One Piece","Luffy","normal"],
-  ["Demon Slayer","Tanjiro","My Hero Academia","Deku","normal"],
-  ["Naruto","Minato","Jujutsu Kaisen","Gojo","hard"]
-];
+import { animeDB, chooseIntelligentPair, getAiStats } from "./ai-engine.js";
 
 const botProfiles = [
   {name:"Yuki",difficulty:"Normal"},
@@ -60,7 +28,7 @@ let unsubAssignment = null;
 
 const localSettings = {
   mode:"auto",
-  difficulty:"normal"
+  difficulty:"hard"
 };
 
 function show(id){
@@ -328,25 +296,44 @@ function selectedAnime(){
 }
 
 function choosePair(){
-  const allowed=new Set(selectedAnime());
+  const allowed=selectedAnime();
   const mix=$("#mix-anime").checked;
 
-  let candidates=pairDB.filter(([aAnime,a,bAnime,b,diff])=>
-    allowed.has(aAnime)&&allowed.has(bAnime)&&diff===localSettings.difficulty&&(mix||aAnime===bAnime)
-  );
+  return chooseIntelligentPair({
+    difficulty:localSettings.difficulty,
+    allowedAnime:allowed,
+    mix,
+    popularityMin:96
+  });
+}
 
-  if(!candidates.length){
-    candidates=pairDB.filter(([aAnime,a,bAnime,b,diff])=>
-      allowed.has(aAnime)&&allowed.has(bAnime)&&(mix||aAnime===bAnime)
-    );
-  }
-  if(!candidates.length) return null;
+function refreshAiStatus(){
+  const el=$("#ai-status");
+  const details=$("#ai-details");
+  if(!el||!details) return;
 
-  const p=candidates[Math.floor(Math.random()*candidates.length)];
-  return {
-    a:{anime:p[0],name:p[1]},
-    b:{anime:p[2],name:p[3]}
-  };
+  const allowed=selectedAnime();
+  const mix=$("#mix-anime").checked;
+  const stats=getAiStats({
+    difficulty:localSettings.difficulty,
+    allowedAnime:allowed,
+    mix,
+    popularityMin:96
+  });
+
+  const label={
+    easy:"faciles",
+    normal:"équilibrés",
+    hard:"difficiles"
+  }[localSettings.difficulty]||"compatibles";
+
+  el.textContent = stats.count
+    ? `${stats.count} duos ${label} validés par l’IA`
+    : "Aucun duo valide avec ces filtres";
+
+  details.textContent = localSettings.difficulty==="hard"
+    ? `Minimum ${stats.minShared} points communs précis • ${stats.minCategories} catégories • personnages très connus • anti-répétition`
+    : `Comparaison apparence, personnalité, rôle, combat, histoire et aura • anti-répétition`;
 }
 
 async function startGame(){
@@ -477,19 +464,25 @@ document.addEventListener("click",e=>{
     localSettings.mode=mode;
     $$("[data-mode]").forEach(b=>b.classList.toggle("active",b.dataset.mode===mode));
     $("#manual-anime-panel").classList.toggle("hidden",mode!=="manual");
+    refreshAiStatus();
   }
 
   const diff=e.target.closest("[data-difficulty]")?.dataset.difficulty;
   if(diff){
     localSettings.difficulty=diff;
     $$("[data-difficulty]").forEach(b=>b.classList.toggle("active",b.dataset.difficulty===diff));
+    refreshAiStatus();
   }
 });
 
 $("#join-code").addEventListener("input",e=>e.target.value=e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,""));
 
+$("#mix-anime").addEventListener("change",refreshAiStatus);
+$("#anime-grid").addEventListener("change",refreshAiStatus);
+
 const savedName=localStorage.getItem("imposteur_name");
 if(savedName) $("#home-name").value=savedName;
 
 renderAnimeGrid();
+refreshAiStatus();
 initFirebase();

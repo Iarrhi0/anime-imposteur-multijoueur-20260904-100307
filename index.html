@@ -13,7 +13,7 @@
       <div class="logo">🎭</div>
       <div>
         <h1>Anime Imposteur</h1>
-        <p>Lobby multijoueur</p>
+        <p>Lobby multijoueur • IA de similarité</p>
       </div>
       <div id="connection-dot" class="connection-dot" title="Connexion"></div>
     </header>
@@ -88,10 +88,19 @@
           <label class="check-row">
             <input type="checkbox" id="mix-anime" checked>
             <span>
-              <strong>Autoriser le mix d’animes</strong>
-              <small>Kakashi vs Gojo, Naruto vs Luffy…</small>
+              <strong>Mélanger les univers</strong>
+              <small>Kakashi vs Gojo, Levi vs Itachi, Shanks vs Gildarts…</small>
             </span>
           </label>
+
+          <div class="ai-brain">
+            <div class="ai-brain-head">
+              <span class="ai-badge">IA ACTIVE</span>
+              <span class="ai-dot"></span>
+            </div>
+            <strong id="ai-status">Analyse des duos…</strong>
+            <small id="ai-details">Apparence, personnalité, rôle, combat, histoire et aura.</small>
+          </div>
 
           <div id="manual-anime-panel" class="hidden">
             <p class="helper">Décoche les univers que vous ne connaissez pas.</p>
@@ -103,13 +112,13 @@
           <div class="section-title">
             <div>
               <h3>Difficulté</h3>
-              <p>Niveau de proximité du duo</p>
+              <p>Plus le niveau monte, plus les personnages se ressemblent</p>
             </div>
           </div>
           <div class="segmented three">
             <button class="segment" data-difficulty="easy">Facile</button>
-            <button class="segment active" data-difficulty="normal">Normal</button>
-            <button class="segment" data-difficulty="hard">Difficile</button>
+            <button class="segment" data-difficulty="normal">Normal</button>
+            <button class="segment active" data-difficulty="hard">Difficile IA</button>
           </div>
         </div>
 

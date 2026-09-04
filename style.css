@@ -67,3 +67,31 @@ background:radial-gradient(circle at 50% 28%,rgba(124,58,237,.3),transparent 15r
 .fatal{background:#321b26;border:1px solid #5d293a;color:#fecdd3;border-radius:14px;padding:13px;margin-bottom:15px;display:grid;gap:5px;font-size:11px}
 .hidden{display:none!important}
 @media(max-width:380px){.anime-grid{grid-template-columns:1fr}.hero h2{font-size:25px}}
+
+.ai-brain{
+  margin-top:11px;
+  padding:13px;
+  border-radius:14px;
+  border:1px solid #3a2867;
+  background:linear-gradient(145deg,rgba(124,58,237,.15),rgba(13,18,33,.96));
+  display:grid;
+  gap:5px
+}
+.ai-brain-head{display:flex;align-items:center;gap:7px;margin-bottom:2px}
+.ai-badge{
+  font-size:9px;
+  letter-spacing:.12em;
+  font-weight:950;
+  color:#d8ccff;
+  background:#2a1d4d;
+  border:1px solid #4d357e;
+  padding:5px 7px;
+  border-radius:999px
+}
+.ai-dot{
+  width:7px;height:7px;border-radius:50%;
+  background:#34d399;
+  box-shadow:0 0 0 4px rgba(52,211,153,.10)
+}
+.ai-brain strong{font-size:12px}
+.ai-brain small{font-size:10px;color:var(--muted);line-height:1.45}
