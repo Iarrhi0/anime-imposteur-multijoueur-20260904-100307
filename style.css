@@ -1014,3 +1014,16 @@ button,.mobile-nav-btn,.vote-choice,.hint-send-btn,.send-icon-btn{touch-action:m
 .message,.hint-row,.game-player{contain:content}
 .status-off{color:#64748b}.game-player.inactive{opacity:.45}
 .vote-choice:disabled{opacity:.75;cursor:not-allowed}
+
+/* V7.2 — vote roster repair */
+.game-player.inactive{opacity:.55}
+.vote-choice.selected{
+  border-color:#8b5cf6!important;
+  background:#3a1f68!important;
+  color:#fff!important;
+}
+#my-vote-label{
+  min-height:30px;
+  display:flex;
+  align-items:center;
+}

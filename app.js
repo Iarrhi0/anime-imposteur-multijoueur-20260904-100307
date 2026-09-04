@@ -1,9 +1,9 @@
 import { firebaseConfig } from "./firebase-config.js";
-import { animeDB, chooseIntelligentPair, getAiStats } from "./ai-engine.js?v=7.1";
+import { animeDB, chooseIntelligentPair, getAiStats } from "./ai-engine.js?v=7.2";
 import {
   chooseAdaptiveBotHint, chooseBotVote, botVoteApproval,
   buildBotDiscussion, shouldBotReply, botReplyDelay, resetBotMemory
-} from "./bot-engine.js?v=7.1";
+} from "./bot-engine.js?v=7.2";
 
 const $=s=>document.querySelector(s);
 const $$=s=>[...document.querySelectorAll(s)];
@@ -35,6 +35,8 @@ let heartbeatTimer=null,hostLeaseTimer=null,hostClaimTimer=null,hostTickTimer=nu
 let reconsiderClientTimer=null,hostTickRunning=false;
 let botTurnTimers=new Map(),botMessageQueue=[],botQueueBusy=false;
 let collectionReady={hints:false,messages:false,approvals:false,voteStatus:false};
+let playersReady=false,botsReady=false;
+let myVoteTargetId=null,myVoteUnsub=null;
 let lastHintIds=new Set(),lastMessageIds=new Set();
 const characterImageCache=new Map();
 const localSettings={mode:"auto",difficulty:"hard"};
@@ -83,9 +85,12 @@ function cleanupListeners(){
   while(roomUnsubs.length){try{roomUnsubs.pop()()}catch{}}
   while(gameUnsubs.length){try{gameUnsubs.pop()()}catch{}}
   if(botAssignmentsUnsub){try{botAssignmentsUnsub()}catch{};botAssignmentsUnsub=null}
+  if(myVoteUnsub){try{myVoteUnsub()}catch{};myVoteUnsub=null}
+  myVoteTargetId=null;
 }
 function cleanupRoom(){
   cleanupTimers();cleanupListeners();
+  playersReady=false;botsReady=false;
   hints=[];messages=[];voteApprovals=[];voteStatuses=[];
   lastHintIds.clear();lastMessageIds.clear();
   collectionReady={hints:false,messages:false,approvals:false,voteStatus:false};
@@ -135,8 +140,20 @@ function activeParticipants(){return activeOrder().map(id=>rosterParticipant(id)
 function currentGameHints(){return hints.filter(h=>h.gameNo===currentRoomData?.gameNo)}
 function trancheHints(){return currentGameHints().filter(h=>h.round===currentRoomData?.hintRound)}
 function trancheGiven(){return new Set(trancheHints().map(h=>h.playerId))}
-function voteVoterIds(){return activeOrder()}
-function voteCandidateIds(){return currentRoomData?.voteCandidates?.length?currentRoomData.voteCandidates:activeOrder()}
+function voteVoterIds(){
+  if(currentRoomData?.status==="voting"){
+    const frozen=currentRoomData?.voteVoters||[];
+    if(frozen.length)return frozen;
+    const order=gameOrder();
+    if(order.length)return order;
+  }
+  return activeOrder();
+}
+function voteCandidateIds(){
+  const candidates=currentRoomData?.voteCandidates||[];
+  if(candidates.length)return candidates;
+  return currentRoomData?.status==="voting"?voteVoterIds():activeOrder();
+}
 function currentVoteRound(){return currentRoomData?.voteRound||1}
 function voteStatusMap(){
   const r=currentVoteRound();
@@ -164,7 +181,7 @@ async function createRoom({solo=false}={}){
       hostUid:currentUser.uid,hostLeaseUntil:Timestamp.fromMillis(now()+HOST_LEASE_MS),
       status:"lobby",gameNo:0,hintRound:0,turnIndex:0,order:[],roster:[],activeIds:[],
       hiddenHints:false,reconsiderSeconds:15,voteProposal:null,voteRound:0,
-      voteStage:null,voteCandidates:[],reconsiderEndsAt:null,result:null,createdAt:serverTimestamp()
+      voteStage:null,voteCandidates:[],voteVoters:[],reconsiderEndsAt:null,result:null,createdAt:serverTimestamp()
     });
     await setDoc(doc(db,"rooms",code,"players",currentUser.uid),{
       name,type:"human",score:0,online:true,lastSeenMs:now(),joinedAt:serverTimestamp()
@@ -221,21 +238,29 @@ async function enterRoom(code){
       resetBotMemory();subscribeGameData(currentRoomData.gameNo||0);
       activeTab="hints";unreadHints=unreadChat=0;
     }
-    if((currentRoomData.voteRound||0)!==(prev?.voteRound||0)){
+    if(
+      (currentRoomData.voteRound||0)!==(prev?.voteRound||0) ||
+      currentRoomData.status!==prev?.status
+    ){
       if($("#vote-choices"))$("#vote-choices").dataset.selectedId="";
+      subscribeMyVote();
     }
     if(prev?.status!==currentRoomData.status&&currentRoomData.status==="voting")toast("Vote accepté","Le vote commence.");
     if(prev?.status!==currentRoomData.status&&currentRoomData.status==="postvote")toast("Résultat","La discussion reste ouverte.");
     if((currentRoomData.voteRound||1)>(prev?.voteRound||1)&&currentRoomData.status==="voting")toast("Égalité","Nouveau vote entre les ex æquo.");
 
-    scheduleRender();scheduleHostTick();armVoteTimer();
+    scheduleRender();scheduleHostTick();armVoteTimer();repairCorruptedRoster().catch(()=>{});
   }));
 
   roomUnsubs.push(onSnapshot(collection(db,"rooms",code,"players"),snap=>{
-    players=snap.docs.map(d=>({id:d.id,...d.data(),bot:false}));scheduleRender();scheduleHostTick();
+    players=snap.docs.map(d=>({id:d.id,...d.data(),bot:false}));
+    playersReady=true;
+    scheduleRender();scheduleHostTick();repairCorruptedRoster().catch(()=>{});
   }));
   roomUnsubs.push(onSnapshot(collection(db,"rooms",code,"bots"),snap=>{
-    bots=snap.docs.map(d=>({id:d.id,...d.data(),bot:true}));scheduleRender();scheduleHostTick();
+    bots=snap.docs.map(d=>({id:d.id,...d.data(),bot:true}));
+    botsReady=true;
+    scheduleRender();scheduleHostTick();repairCorruptedRoster().catch(()=>{});
   }));
   roomUnsubs.push(onSnapshot(doc(db,"rooms",code,"assignments",currentUser.uid),snap=>{
     assignment=snap.exists()?snap.data():null;renderCharacter();
@@ -279,6 +304,26 @@ function subscribeGameData(gameNo){
   gameUnsubs.push(onSnapshot(query(collection(db,"rooms",currentRoom,"voteStatus"),where("gameNo","==",gameNo)),snap=>{
     voteStatuses=snap.docs.map(d=>({id:d.id,...d.data()}));collectionReady.voteStatus=true;scheduleRender();scheduleHostTick();
   }));
+}
+
+
+function subscribeMyVote(){
+  if(myVoteUnsub){try{myVoteUnsub()}catch{};myVoteUnsub=null}
+  myVoteTargetId=null;
+  if(!currentRoom||!currentUser||currentRoomData?.status!=="voting")return;
+
+  const id=`g${currentRoomData.gameNo}_v${currentVoteRound()}_${currentUser.uid}`;
+  myVoteUnsub=fb.fsMod.onSnapshot(
+    fb.fsMod.doc(db,"rooms",currentRoom,"votes",id),
+    snap=>{
+      myVoteTargetId=snap.exists()?snap.data().targetId:null;
+      if(myVoteTargetId && $("#vote-choices")){
+        $("#vote-choices").dataset.selectedId=myVoteTargetId;
+      }
+      scheduleRender();
+    },
+    ()=>{}
+  );
 }
 
 function subscribeBotAssignments(){
@@ -331,18 +376,92 @@ async function hostTick(){
   finally{hostTickRunning=false}
 }
 async function hostNormalizeActive(){
-  if(!["playing","voting"].includes(currentRoomData.status))return;
-  const cur=activeIds();if(!cur.length)return;
-  const next=cur.filter(id=>{
-    const p=rosterParticipant(id);if(!p)return false;
-    if(p.bot)return bots.some(b=>b.id===id);
-    const live=players.find(x=>x.id===id);
-    return !!live&&now()-(live.lastSeenMs||0)<OFFLINE_DROP_MS;
+  if(!isHost||currentRoomData?.status!=="playing")return;
+
+  // Critical V7.2 fix:
+  // room snapshot can arrive BEFORE players/bots collections.
+  // Never modify activeIds until BOTH collections have delivered once.
+  if(!playersReady||!botsReady)return;
+
+  const cur=activeIds();
+  const order=gameOrder();
+  if(!order.length)return;
+
+  const playerMap=new Map(players.map(p=>[p.id,p]));
+  const botSet=new Set(bots.map(b=>b.id));
+
+  const next=order.filter(id=>{
+    const r=rosterParticipant(id);
+    if(!r)return false;
+    if(r.bot)return botSet.has(id);
+
+    const p=playerMap.get(id);
+    if(!p)return false;
+
+    // Background tabs/locked phones must not be dropped immediately.
+    if(p.online===false && now()-(p.lastSeenMs||0)>30000)return false;
+    if(now()-(p.lastSeenMs||0)>300000)return false;
+    return true;
   });
+
   if(next.length===cur.length&&next.every((x,i)=>x===cur[i]))return;
-  await fb.fsMod.updateDoc(fb.fsMod.doc(db,"rooms",currentRoom),{
-    activeIds:next,voteCandidates:voteCandidateIds().filter(id=>next.includes(id))
-  });
+
+  await fb.fsMod.updateDoc(
+    fb.fsMod.doc(db,"rooms",currentRoom),
+    {activeIds:next}
+  );
+}
+
+
+async function repairCorruptedRoster(){
+  if(!isHost||!currentRoomData||!playersReady||!botsReady)return;
+  if(!["playing","voting"].includes(currentRoomData.status))return;
+
+  const order=gameOrder();
+  if(order.length<2)return;
+
+  const known=new Set([...players.map(p=>p.id),...bots.map(b=>b.id)]);
+  const recoverable=order.filter(id=>known.has(id));
+
+  if(currentRoomData.status==="playing"){
+    const active=currentRoomData.activeIds||[];
+    // Repair a suspiciously collapsed roster automatically.
+    if(recoverable.length>=2 && active.length<recoverable.length){
+      await fb.fsMod.updateDoc(
+        fb.fsMod.doc(db,"rooms",currentRoom),
+        {activeIds:recoverable}
+      );
+    }
+    return;
+  }
+
+  if(currentRoomData.status==="voting"){
+    const frozen=currentRoomData.voteVoters||[];
+    const candidates=currentRoomData.voteCandidates||[];
+    const patch={};
+
+    // A vote is frozen from the roster that existed when voting began.
+    if(frozen.length<2)patch.voteVoters=[...order];
+
+    // In round 1 every original player must be a candidate.
+    // A tie revote is allowed to have fewer candidates.
+    if((currentRoomData.voteRound||1)===1 && candidates.length<2){
+      patch.voteCandidates=[...order];
+    }
+
+    // Restore activeIds too if an earlier build collapsed it.
+    if((currentRoomData.activeIds||[]).length<2){
+      patch.activeIds=[...recoverable];
+    }
+
+    if(Object.keys(patch).length){
+      await fb.fsMod.updateDoc(
+        fb.fsMod.doc(db,"rooms",currentRoom),
+        patch
+      );
+      toast("Vote réparé","La liste complète des joueurs a été restaurée.");
+    }
+  }
 }
 
 async function startGame(){
@@ -364,7 +483,7 @@ async function startGame(){
   await fb.fsMod.updateDoc(fb.fsMod.doc(db,"rooms",currentRoom),{
     status:"playing",gameNo,hintRound:1,turnIndex:0,order,roster,activeIds:order,
     hiddenHints:$("#hidden-hints").checked,reconsiderSeconds:Number($("#reconsider-seconds").value||15),
-    voteProposal:null,voteRound:0,voteStage:null,voteCandidates:[],reconsiderEndsAt:null,result:null
+    voteProposal:null,voteRound:0,voteStage:null,voteCandidates:[],voteVoters:[],reconsiderEndsAt:null,result:null
   });
   cleanupOldData(gameNo).catch(()=>{});
 }
@@ -484,7 +603,8 @@ async function hostProcessProposal(){
   if(yes>voters.length/2){
     await fb.fsMod.updateDoc(fb.fsMod.doc(db,"rooms",currentRoom),{
       status:"voting",voteProposal:{...p,state:"accepted",closedMs:now()},
-      voteRound:1,voteStage:"collecting",voteCandidates:[...voters],reconsiderEndsAt:null
+      voteRound:1,voteStage:"collecting",
+      voteVoters:[...voters],voteCandidates:[...voters],reconsiderEndsAt:null
     });return;
   }
   if(voters.every(id=>a.some(x=>x.playerId===id))||now()-p.createdMs>PROPOSAL_TIMEOUT_MS){
@@ -495,6 +615,8 @@ async function hostProcessProposal(){
 function voteDocId(playerId){return `g${currentRoomData.gameNo}_v${currentVoteRound()}_${playerId}`}
 async function writeMyVote(targetId){
   if(currentRoomData?.status!=="voting"||!["collecting","reconsider"].includes(currentRoomData.voteStage))return toast("Vote figé");
+  if(targetId===currentUser.uid)return toast("Vote impossible","Tu ne peux pas voter pour toi-même.");
+  myVoteTargetId=targetId;
   if(!voteCandidateIds().includes(targetId))return;
   const id=voteDocId(currentUser.uid),base={
     gameNo:currentRoomData.gameNo,voteRound:currentVoteRound(),playerId:currentUser.uid,targetId,submitted:true,confirmed:false,updatedMs:now()
@@ -677,9 +799,24 @@ function renderGameHeader(){
   renderTurn();
 }
 function renderGamePlayers(){
-  const current=activeOrder()[currentRoomData.turnIndex||0],active=new Set(activeIds());
-  patchHTML("#game-players",(currentRoomData.roster||[]).map(p=>`<div class="game-player ${current===p.id&&currentRoomData.status==="playing"?"turn":""} ${active.has(p.id)?"":"inactive"}">
-    <div class="avatar ${p.bot?"bot":""}">${p.bot?"🤖":esc((p.name||"?")[0])}</div><div class="game-player-name">${esc(p.name)}</div></div>`).join(""));
+  const current=activeOrder()[currentRoomData.turnIndex||0];
+  const active=new Set(
+    currentRoomData.status==="voting"
+      ? voteVoterIds()
+      : currentRoomData.status==="postvote"
+        ? gameOrder()
+        : activeIds()
+  );
+
+  patchHTML(
+    "#game-players",
+    (currentRoomData.roster||[]).map(p=>`
+      <div class="game-player ${current===p.id&&currentRoomData.status==="playing"?"turn":""} ${active.has(p.id)?"":"inactive"}">
+        <div class="avatar ${p.bot?"bot":""}">${p.bot?"🤖":esc((p.name||"?")[0])}</div>
+        <div class="game-player-name">${esc(p.name)}</div>
+      </div>
+    `).join("")
+  );
 }
 function renderTurn(){
   if(currentRoomData.status!=="playing")return;
@@ -724,16 +861,81 @@ function renderProposal(){
 }
 function renderVoting(){
   if(currentRoomData.status!=="voting")return;
-  const stage=currentRoomData.voteStage||"collecting",sm=voteStatusMap(),mine=sm.get(currentUser.uid);
-  patchText("#vote-stage-help",stage==="collecting"?"Choisis ton suspect.":stage==="reconsider"?"Tout le monde a voté : tu peux encore changer d’avis.":"Vote figé : confirme définitivement.");
-  $("#vote-timer").classList.toggle("hidden",stage!=="reconsider");if(stage==="reconsider")updateVoteCountdown();
-  patchHTML("#vote-status-list",voteVoterIds().map(id=>{const p=rosterParticipant(id),s=sm.get(id),cls=s?.confirmed?"confirmed":s?.submitted?"voted":"";return `<div class="vote-status"><span>${esc(p?.name||"Joueur")}</span><span style="display:flex;gap:5px;align-items:center"><i class="status-dot ${cls}"></i>${s?.confirmed?"Confirmé":s?.submitted?"A voté":"Attente"}</span></div>`}).join(""));
-  const selected=$("#vote-choices").dataset.selectedId||"",locked=stage==="confirming";
-  patchHTML("#vote-choices",voteCandidateIds().map(id=>`<button class="vote-choice ${selected===id?"selected":""}" data-vote-id="${id}" ${locked?"disabled":""}>${esc(rosterParticipant(id)?.name||"Joueur")}</button>`).join(""));
-  if(!locked)$$("[data-vote-id]").forEach(b=>b.addEventListener("click",async()=>{$("#vote-choices").dataset.selectedId=b.dataset.voteId;patchText("#my-vote-label",`Choix actuel : ${rosterParticipant(b.dataset.voteId)?.name||""}`);if(stage==="reconsider"&&mine?.submitted)await writeMyVote(b.dataset.voteId);scheduleRender()}));
+
+  const stage=currentRoomData.voteStage||"collecting";
+  const sm=voteStatusMap();
+  const mine=sm.get(currentUser.uid);
+
+  patchText(
+    "#vote-stage-help",
+    stage==="collecting"
+      ?"Choisis ton suspect."
+      :stage==="reconsider"
+        ?"Tout le monde a voté : tu peux encore changer d’avis."
+        :"Vote figé : confirme définitivement."
+  );
+
+  $("#vote-timer").classList.toggle("hidden",stage!=="reconsider");
+  if(stage==="reconsider")updateVoteCountdown();
+
+  patchHTML(
+    "#vote-status-list",
+    voteVoterIds().map(id=>{
+      const p=rosterParticipant(id),s=sm.get(id);
+      const cls=s?.confirmed?"confirmed":s?.submitted?"voted":"";
+      return `<div class="vote-status">
+        <span>${esc(p?.name||"Joueur")}</span>
+        <span style="display:flex;gap:5px;align-items:center">
+          <i class="status-dot ${cls}"></i>
+          ${s?.confirmed?"Confirmé":s?.submitted?"A voté":"Attente"}
+        </span>
+      </div>`;
+    }).join("")
+  );
+
+  if(myVoteTargetId && $("#vote-choices")){
+    $("#vote-choices").dataset.selectedId=myVoteTargetId;
+  }
+
+  const selected=myVoteTargetId||$("#vote-choices").dataset.selectedId||"";
+  const locked=stage==="confirming";
+
+  // A player cannot vote for themselves.
+  const visibleCandidates=voteCandidateIds().filter(id=>id!==currentUser.uid);
+
+  patchHTML(
+    "#vote-choices",
+    visibleCandidates.map(id=>`
+      <button
+        class="vote-choice ${selected===id?"selected":""}"
+        data-vote-id="${id}"
+        ${locked?"disabled":""}
+      >${esc(rosterParticipant(id)?.name||"Joueur")}</button>
+    `).join("")
+  );
+
+  if(!locked){
+    $$("[data-vote-id]").forEach(b=>b.addEventListener("click",async()=>{
+      $("#vote-choices").dataset.selectedId=b.dataset.voteId;
+      myVoteTargetId=b.dataset.voteId;
+      patchText("#my-vote-label",`Choix actuel : ${rosterParticipant(b.dataset.voteId)?.name||""}`);
+      if(stage==="reconsider"&&mine?.submitted)await writeMyVote(b.dataset.voteId);
+      scheduleRender();
+    }));
+  }
+
+  const chosenName=selected?rosterParticipant(selected)?.name:null;
+  patchText(
+    "#my-vote-label",
+    chosenName
+      ? (locked?`Ton vote figé : ${chosenName}`:`Choix actuel : ${chosenName}`)
+      : "Aucun choix"
+  );
+
   $("#submit-vote-btn").classList.toggle("hidden",stage!=="collecting"||!!mine?.submitted);
   $("#confirm-vote-btn").classList.toggle("hidden",stage!=="confirming"||!!mine?.confirmed);
 }
+
 function updateVoteCountdown(){
   if(currentRoomData?.voteStage!=="reconsider")return;
   const n=Math.max(0,Math.ceil((reconsiderEndMs()-now())/1000));patchText("#vote-timer",n);
@@ -839,7 +1041,10 @@ document.addEventListener("click",e=>{
   const diff=e.target.closest("[data-difficulty]")?.dataset.difficulty;if(diff){localSettings.difficulty=diff;$$("[data-difficulty]").forEach(x=>x.classList.toggle("active",x.dataset.difficulty===diff));refreshAiStatus()}
 });
 $("#mix-anime").addEventListener("change",refreshAiStatus);$("#anime-grid").addEventListener("change",refreshAiStatus);
-document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible")startHeartbeat();else markOffline()});window.addEventListener("pagehide",markOffline);
+document.addEventListener("visibilitychange",()=>{
+  if(document.visibilityState==="visible")startHeartbeat();
+});
+window.addEventListener("pagehide",markOffline);
 
 const savedName=localStorage.getItem("imposteur_name");if(savedName)$("#home-name").value=savedName;
 renderAnimeGrid();refreshAiStatus();initFirebase();
