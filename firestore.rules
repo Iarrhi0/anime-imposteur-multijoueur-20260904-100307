@@ -1,109 +1,98 @@
 rules_version = '2';
-
 service cloud.firestore {
   match /databases/{database}/documents {
-    function signedIn() { return request.auth != null; }
-    function roomExists(roomId) {
-      return exists(/databases/$(database)/documents/rooms/$(roomId));
+    function signedIn(){ return request.auth != null; }
+    function rp(roomId){ return /databases/$(database)/documents/rooms/$(roomId); }
+    function roomExists(roomId){ return exists(rp(roomId)); }
+    function rd(roomId){ return get(rp(roomId)).data; }
+    function isHost(roomId){ return signedIn() && roomExists(roomId) && rd(roomId).hostUid == request.auth.uid; }
+    function member(roomId){ return signedIn() && exists(/databases/$(database)/documents/rooms/$(roomId)/players/$(request.auth.uid)); }
+
+    function canClaimHost(roomId){
+      return member(roomId)
+        && resource.data.hostLeaseUntil < request.time
+        && request.resource.data.hostUid == request.auth.uid
+        && request.resource.data.hostLeaseUntil > request.time
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['hostUid','hostLeaseUntil']);
     }
-    function isHost(roomId) {
-      return signedIn() && roomExists(roomId)
-        && get(/databases/$(database)/documents/rooms/$(roomId)).data.hostUid == request.auth.uid;
+
+    function canOpenProposal(roomId){
+      return member(roomId)
+        && resource.data.status == 'playing'
+        && request.resource.data.voteProposal.by == request.auth.uid
+        && request.resource.data.voteProposal.state == 'open'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['voteProposal']);
     }
-    function isHumanMember(roomId) {
-      return signedIn()
-        && exists(/databases/$(database)/documents/rooms/$(roomId)/players/$(request.auth.uid));
-    }
-    function roomMember(roomId) {
-      return isHumanMember(roomId) || isHost(roomId);
+
+    function canAdvanceTimer(roomId){
+      return member(roomId)
+        && resource.data.status == 'voting'
+        && resource.data.voteStage == 'reconsider'
+        && resource.data.reconsiderEndsAt <= request.time
+        && request.resource.data.status == 'voting'
+        && request.resource.data.voteStage == 'confirming'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['voteStage']);
     }
 
     match /rooms/{roomId} {
-      // Lecture nécessaire pour rejoindre avec un code.
-      allow read: if signedIn();
-
-      allow create: if signedIn()
-        && request.resource.data.hostUid == request.auth.uid;
-
-      // Le navigateur de l'hôte arbitre la partie et l'IA locale.
-      allow update, delete: if isHost(roomId);
+      allow get: if signedIn();
+      allow list: if false;
+      allow create: if signedIn() && request.resource.data.hostUid == request.auth.uid;
+      allow update: if isHost(roomId) || canClaimHost(roomId) || canOpenProposal(roomId) || canAdvanceTimer(roomId);
+      allow delete: if isHost(roomId);
 
       match /players/{playerId} {
-        allow read: if signedIn() && roomExists(roomId);
-        allow create: if signedIn() && roomExists(roomId)
-          && request.auth.uid == playerId;
-        allow update, delete: if signedIn() && roomExists(roomId)
-          && (request.auth.uid == playerId || isHost(roomId));
+        allow read: if member(roomId) || isHost(roomId);
+        allow create: if signedIn() && request.auth.uid == playerId && rd(roomId).status == 'lobby';
+        allow update, delete: if signedIn() && (request.auth.uid == playerId || isHost(roomId));
       }
-
       match /bots/{botId} {
-        allow read: if signedIn() && roomExists(roomId);
+        allow read: if member(roomId) || isHost(roomId);
         allow write: if isHost(roomId);
       }
-
       match /assignments/{playerId} {
-        allow read: if signedIn() && request.auth.uid == playerId;
+        allow read: if signedIn() && (request.auth.uid == playerId || isHost(roomId));
         allow write: if isHost(roomId);
       }
-
       match /botAssignments/{botId} {
         allow read, write: if isHost(roomId);
       }
-
-      match /secrets/{secretId} {
+      match /secrets/{id} {
         allow read, write: if isHost(roomId);
       }
-
-      match /hints/{hintId} {
-        allow read: if signedIn() && roomExists(roomId)
-          && (resource.data.revealed == true
-              || resource.data.playerId == request.auth.uid
-              || isHost(roomId));
-
-        allow create: if signedIn() && roomExists(roomId)
-          && (isHost(roomId)
-              || request.resource.data.playerId == request.auth.uid);
-
-        allow update: if isHost(roomId);
-        allow delete: if isHost(roomId);
-      }
-
-      match /messages/{messageId} {
-        allow read: if signedIn() && roomExists(roomId);
-        allow create: if signedIn() && roomExists(roomId)
-          && (isHost(roomId)
-              || request.resource.data.playerId == request.auth.uid);
+      match /hints/{id} {
+        allow read: if member(roomId) && (resource.data.revealed == true || resource.data.playerId == request.auth.uid || isHost(roomId));
+        allow create: if member(roomId) && rd(roomId).status == 'playing'
+          && request.resource.data.gameNo == rd(roomId).gameNo
+          && (request.resource.data.playerId == request.auth.uid || isHost(roomId));
         allow update, delete: if isHost(roomId);
       }
-
-      match /voteProposals/{proposalId} {
-        allow read: if signedIn() && roomExists(roomId);
-        allow create: if signedIn() && roomExists(roomId)
-          && request.resource.data.playerId == request.auth.uid;
+      match /messages/{id} {
+        allow read: if member(roomId);
+        allow create: if member(roomId)
+          && request.resource.data.gameNo == rd(roomId).gameNo
+          && (request.resource.data.playerId == request.auth.uid || isHost(roomId));
         allow update, delete: if isHost(roomId);
       }
-
-      match /voteApprovals/{approvalId} {
-        allow read: if signedIn() && roomExists(roomId);
-        allow create, update: if signedIn() && roomExists(roomId)
-          && (isHost(roomId)
-              || request.resource.data.playerId == request.auth.uid);
+      match /voteApprovals/{id} {
+        allow read: if member(roomId);
+        allow create, update: if member(roomId)
+          && request.resource.data.gameNo == rd(roomId).gameNo
+          && (request.resource.data.playerId == request.auth.uid || isHost(roomId));
         allow delete: if isHost(roomId);
       }
-
-      // Choix du vote privé : seulement le joueur concerné et l'hôte.
-      match /votes/{playerId} {
-        allow read: if signedIn() && (request.auth.uid == playerId || isHost(roomId));
-        allow create, update: if signedIn()
-          && (request.auth.uid == playerId || isHost(roomId));
+      match /votes/{id} {
+        allow read: if isHost(roomId) || (member(roomId) && resource.data.playerId == request.auth.uid);
+        allow create, update: if isHost(roomId) || (member(roomId)
+          && request.resource.data.playerId == request.auth.uid
+          && request.resource.data.gameNo == rd(roomId).gameNo);
         allow delete: if isHost(roomId);
       }
-
-      // Statut public du vote : "a voté / confirmé", sans montrer la cible.
-      match /voteStatus/{playerId} {
-        allow read: if signedIn() && roomExists(roomId);
-        allow create, update: if signedIn()
-          && (request.auth.uid == playerId || isHost(roomId));
+      match /voteStatus/{id} {
+        allow read: if member(roomId);
+        allow create, update: if isHost(roomId) || (member(roomId)
+          && request.resource.data.playerId == request.auth.uid
+          && request.resource.data.gameNo == rd(roomId).gameNo);
         allow delete: if isHost(roomId);
       }
     }

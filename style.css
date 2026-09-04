@@ -1004,3 +1004,13 @@ body{
   background:#223447!important;
   color:#6f8397!important;
 }
+
+/* V7.1 — fluidité application */
+html,body{overscroll-behavior:none;touch-action:manipulation}
+body{-webkit-tap-highlight-color:transparent}
+button,.mobile-nav-btn,.vote-choice,.hint-send-btn,.send-icon-btn{touch-action:manipulation;user-select:none;-webkit-user-select:none}
+.screen{contain:layout style}
+.hints-scroll,.chat-list,.players-horizontal{-webkit-overflow-scrolling:touch;overscroll-behavior:contain}
+.message,.hint-row,.game-player{contain:content}
+.status-off{color:#64748b}.game-player.inactive{opacity:.45}
+.vote-choice:disabled{opacity:.75;cursor:not-allowed}

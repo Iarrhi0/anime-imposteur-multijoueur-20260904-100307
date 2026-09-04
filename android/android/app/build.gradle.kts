@@ -8,8 +8,8 @@ android {
         applicationId = "com.animeimposteur.app"
         minSdk = 24
         targetSdk = 35
-        versionCode = 6
-        versionName = "6.0"
+        versionCode = 71
+        versionName = "7.1"
         buildConfigField("String","GAME_URL","\"__GAME_URL__\"")
     }
     buildFeatures { buildConfig = true }

@@ -74,399 +74,308 @@ function addRareEmoji(text,p){
 }
 function isQuestion(text){return /\?|pourquoi|comment|quoi|quel|quelle/i.test(text||"")}
 function mentioned(text,name){
-  return norm(text).includes(norm(name));
+  const clean=v=>` ${norm(v).replace(/[^a-z0-9]+/g," ").trim()} `;
+  return clean(text).includes(clean(name));
 }
 function containsAny(text,arr){
   const t=norm(text);return arr.some(x=>t.includes(norm(x)));
 }
 
+
+const SAFE_HINTS=new Set([
+  "calme","rapide","puissant","génie","chef","combat","secret","froid",
+  "prodige","héros","mentor","clan","sabre","noir","rouge","famille",
+  "précision","discipline","intelligent","loyal","réservé"
+]);
+
+export function resetBotMemory(){
+  memory.clear();
+}
+
 export function keywordsFor(character){
-  return KEYWORDS[character] || ["Calme","Puissant","Rapide","Connu","Sombre","Combat","Génie","Chef"];
+  return KEYWORDS[character] || [
+    "Calme","Puissant","Rapide","Connu","Sombre","Combat",
+    "Génie","Chef","Secret","Élite","Déterminé","Loyal"
+  ];
 }
 
-export function chooseBotHint(character,usedWords=[]){
-  const used=new Set(usedWords.map(norm));
-  const pool=keywordsFor(character);
-  const fresh=pool.filter(w=>!used.has(norm(w)));
-  // Avoid always picking the strongest clue first.
-  const slice=(fresh.length?fresh:pool).slice(0,Math.max(3,Math.min(7,(fresh.length||pool.length))));
-  return pick(slice)||"Calme";
+function level(diff){
+  const d=norm(diff);
+  if(d.includes("expert"))return 3;
+  if(d.includes("diffic"))return 2;
+  return 1;
 }
 
-export function chooseBotVote(botId,botCharacter,participants,hints){
+function suspicionScores(botCharacter,hints,participants,botName){
   const own=new Set(keywordsFor(botCharacter).map(norm));
   const scores=new Map();
+  participants.forEach(p=>{if(p.name!==botName)scores.set(p.name,0)});
 
-  participants.forEach(p=>{
-    if(p.id!==botId)scores.set(p.id,Math.random()*1.2);
-  });
-
+  // Recompute from scratch: the same clue is never counted several times.
   for(const h of hints){
-    if(!scores.has(h.playerId))continue;
-    let s=scores.get(h.playerId);
-    s += own.has(norm(h.word)) ? -1.1 : 1.7;
-    scores.set(h.playerId,s);
-  }
-
-  let best=null,bestScore=-Infinity;
-  for(const [id,s] of scores){
-    if(s>bestScore){best=id;bestScore=s}
-  }
-  return best || participants.find(p=>p.id!==botId)?.id;
-}
-
-export function botVoteApproval(botCharacter,hints,botName=""){
-  const persona=PERSONAS[botName]||{agree:.52};
-  const rounds=new Set(hints.map(h=>h.round)).size;
-  const evidence=Math.min(.28,hints.length*.025)+Math.min(.12,rounds*.04);
-  return Math.random() < Math.min(.9,persona.agree+evidence);
-}
-
-
-function uniquePick(botName, choices){
-  const mem=getMem(botName);
-  const usable=choices.filter(Boolean).filter(x=>!mem.lastReplies.includes(x));
-  const pool=usable.length?usable:choices.filter(Boolean);
-  if(!pool.length)return null;
-  const reply=pick(pool);
-  mem.lastReplies=[reply,...mem.lastReplies].slice(0,12);
-  return reply;
-}
-
-function playerHintMap(hints){
-  const map=new Map();
-  for(const h of hints){
-    if(!map.has(h.playerName))map.set(h.playerName,[]);
-    map.get(h.playerName).push(h);
-  }
-  return map;
-}
-
-function latestHintOf(hints,name){
-  return [...hints].reverse().find(h=>h.playerName===name);
-}
-
-function findMostQuestionableHint(botName,botCharacter,hints){
-  const own=new Set(keywordsFor(botCharacter).map(norm));
-  const others=hints.filter(h=>h.playerName!==botName);
-
-  let best=null;
-  let bestScore=-Infinity;
-
-  for(const h of others){
-    let score=0;
+    if(h.playerName===botName || !scores.has(h.playerName))continue;
     const w=norm(h.word);
-    if(!own.has(w))score+=2;
-    if(String(h.word||"").length<=4)score+=.4;
-    if(["classe","cool","fort","bien","style","rapide","calme","noir","puissant"].includes(w))score+=.8;
+    let s=own.has(w)?-1.3:1.25;
+    if(["classe","cool","style","fort","bien","normal"].includes(w))s+=.75;
+    scores.set(h.playerName,(scores.get(h.playerName)||0)+s);
+  }
+  return [...scores.entries()].sort((a,b)=>b[1]-a[1]);
+}
 
-    if(score>bestScore){
-      best=h;
-      bestScore=score;
+function outsiderChance(character,hints,botName){
+  const own=new Set(keywordsFor(character).map(norm));
+  const others=hints.filter(h=>h.playerName!==botName);
+  if(others.length<3)return .18;
+  const mismatch=others.filter(h=>!own.has(norm(h.word))).length/others.length;
+  return Math.max(.08,Math.min(.90,.10+mismatch*.76));
+}
+
+export function chooseAdaptiveBotHint(
+  character,usedWords=[],hints=[],botName="IA",difficulty="Normal"
+){
+  const used=new Set(usedWords.map(norm));
+  const base=keywordsFor(character);
+  let available=base.filter(w=>!used.has(norm(w)));
+  if(!available.length)available=[...base];
+
+  const lvl=level(difficulty);
+  const outsider=outsiderChance(character,hints,botName);
+
+  // A smarter potential impostor becomes deliberately less specific.
+  if(lvl>=2 && outsider>.55){
+    const safe=available.filter(w=>SAFE_HINTS.has(norm(w)));
+    if(safe.length)available=safe;
+  }
+  if(lvl===3 && available.length>4){
+    available=available.slice(0,Math.max(3,available.length-2));
+  }
+  return pick(available)||"Calme";
+}
+
+export function chooseBotVote(
+  botId,botCharacter,participants,hints,messages=[],difficulty="Normal"
+){
+  const me=participants.find(p=>p.id===botId);
+  const name=me?.name||"IA";
+  const scores=suspicionScores(botCharacter,hints,participants,name);
+  const lvl=level(difficulty);
+  const chat=new Map();
+
+  if(lvl>=2){
+    for(const m of messages.slice(-20)){
+      for(const p of participants){
+        if(p.id===botId)continue;
+        if(mentioned(m.text,p.name)&&/(suspect|imposteur|c.?est|je crois|je pense)/i.test(m.text)){
+          chat.set(p.name,(chat.get(p.name)||0)+.35);
+        }
+      }
     }
   }
 
+  let best=[],max=-Infinity;
+  for(const p of participants){
+    if(p.id===botId)continue;
+    const base=scores.find(x=>x[0]===p.name)?.[1]||0;
+    const noise=Math.random()*(lvl===1?1.5:.55);
+    const score=base+(chat.get(p.name)||0)+noise;
+    if(score>max+.15){max=score;best=[p.id]}
+    else if(Math.abs(score-max)<=.15)best.push(p.id);
+  }
+  return pick(best)||participants.find(p=>p.id!==botId)?.id;
+}
+
+export function botVoteApproval(
+  botCharacter,hints,messages,botName="IA",difficulty="Normal"
+){
+  const lvl=level(difficulty);
+  const tranches=new Set(hints.map(h=>h.round)).size;
+  const outsider=outsiderChance(botCharacter,hints,botName);
+  let confidence=.25+Math.min(.36,tranches*.10)+Math.min(.16,hints.length*.012);
+  confidence+=lvl===3?.10:lvl===2?.05:0;
+  if(outsider>.62)confidence+=.07;
+  return Math.random()<Math.min(.90,confidence);
+}
+
+function uniquePick(botName,choices){
+  const mem=getMem(botName);
+  const clean=choices.filter(Boolean);
+  const fresh=clean.filter(x=>!mem.lastReplies.includes(x));
+  const reply=pick(fresh.length?fresh:clean);
+  if(!reply)return null;
+  mem.lastReplies=[reply,...mem.lastReplies].slice(0,14);
+  return reply;
+}
+function latestHint(hints,name){
+  return [...hints].reverse().find(h=>h.playerName===name);
+}
+function questionableHint(botName,character,hints){
+  const own=new Set(keywordsFor(character).map(norm));
+  let best=null,max=-Infinity;
+  for(const h of hints){
+    if(h.playerName===botName)continue;
+    let s=own.has(norm(h.word))?-1:1.3;
+    if(["classe","cool","style","fort","bien","normal"].includes(norm(h.word)))s+=.8;
+    if(s>max){max=s;best=h}
+  }
   return best;
 }
-
-function clipHuman(text,maxWords=24){
-  const parts=String(text||"").trim().split(/\s+/);
-  return parts.slice(0,maxWords).join(" ");
-}
-
-function explicitTargetName(text,participants=[]){
-  const t=norm(text);
-  return participants.find(p=>t.includes(norm(p.name)))?.name||null;
-}
-
-function looksLikeDefenseDemand(text,botName){
-  const t=norm(text);
-  const n=norm(botName);
-  return (
-    t.includes(n) &&
-    (
-      /defend/.test(t) ||
-      /repond/.test(t) ||
-      /explique/.test(t) ||
-      /argument/.test(t) ||
-      /tu dis rien/.test(t) ||
-      /tu ne dis rien/.test(t)
-    )
-  );
-}
-
-function looksLikeAccusation(text,botName){
-  const t=norm(text);
-  const n=norm(botName);
-  return (
-    t.includes(n) &&
-    (
-      /c.?est .*imposteur/.test(t) ||
-      /c.?est .*suspect/.test(t) ||
-      /je crois que c.?est/.test(t) ||
-      /je pense que c.?est/.test(t) ||
-      /je vote/.test(t) ||
-      /suspect/.test(t) ||
-      /imposteur/.test(t)
-    )
-  );
-}
-
-function argumentativeDefense(botName,botCharacter,hints,participants=[]){
-  const ownHint=latestHintOf(hints,botName);
-  const weak=findMostQuestionableHint(botName,botCharacter,hints);
-
-  if(!ownHint){
+function defense(botName,character,hints){
+  const mine=latestHint(hints,botName);
+  const weak=questionableHint(botName,character,hints);
+  if(!mine){
     return uniquePick(botName,[
-      "Je n’ai même pas encore joué. Attendez mon indice avant de m’accuser.",
-      "Laissez-moi donner mon indice d’abord, après vous pourrez juger.",
-      "Vous m’accusez avant mon tour. Attendez au moins mon indice."
+      "Attendez mon indice avant de m’accuser.",
+      "Je n’ai même pas encore joué. Jugez après mon indice.",
+      "Vous m’accusez avant mon tour."
     ]);
   }
-
   if(weak){
     return uniquePick(botName,[
-      `Si, je me défends. Mon « ${ownHint.word} » est cohérent ; « ${weak.word} » de ${weak.playerName} est plus vague.`,
-      `Pourquoi moi ? J’ai donné « ${ownHint.word} ». Je trouve « ${weak.word} » de ${weak.playerName} plus suspect.`,
-      `Mon « ${ownHint.word} » tient. ${weak.playerName}, explique plutôt ton « ${weak.word} ».`,
-      `Je me défends : « ${ownHint.word} » colle bien. Le mot « ${weak.word} » me convainc beaucoup moins.`
+      `Je me défends : mon « ${mine.word} » est cohérent. « ${weak.word} » de ${weak.playerName} me paraît plus vague.`,
+      `Pourquoi moi ? J’ai donné « ${mine.word} ». ${weak.playerName} doit surtout expliquer « ${weak.word} ».`,
+      `Mon « ${mine.word} » tient. Le « ${weak.word} » de ${weak.playerName} me convainc moins.`,
+      `Je ne suis pas d’accord. « ${mine.word} » a une logique ; « ${weak.word} » est bien moins précis.`
     ]);
   }
-
   return uniquePick(botName,[
-    `Je me défends : mon indice « ${ownHint.word} » est cohérent avec ce que j’ai.`,
-    `Pourquoi moi ? « ${ownHint.word} » n’est pas un indice au hasard.`,
-    `Mon indice « ${ownHint.word} » a une vraie logique. Je ne vais pas révéler davantage.`
+    `Mon indice « ${mine.word} » a une logique. Je ne peux pas en dire beaucoup plus.`,
+    `Pourquoi moi ? « ${mine.word} » n’est pas un mot au hasard.`,
+    `Je me défends : « ${mine.word} » colle à mon personnage.`
   ]);
 }
 
 export function buildBotDiscussion(
-  botName,
-  botCharacter,
-  hints,
-  messages,
-  participants=[],
-  context={}
+  botName,botCharacter,hints,messages,participants=[],context={}
 ){
-  const persona=PERSONAS[botName]||PERSONAS.Yuki;
-  const mem=getMem(botName);
   const last=messages[messages.length-1];
   if(!last)return null;
-
   const text=String(last.text||"").trim();
   const t=norm(text);
-  const recentHints=hints.slice(-20);
-  const ownHint=latestHintOf(recentHints,botName);
-  const weak=findMostQuestionableHint(botName,botCharacter,recentHints);
-  const target=explicitTargetName(text,participants);
+  const mine=latestHint(hints,botName);
+  const weak=questionableHint(botName,botCharacter,hints);
+  const lvl=level(context.difficulty||"Normal");
+  const scores=suspicionScores(botCharacter,hints,participants,botName);
+  const suspect=scores[0]?.[0]||weak?.playerName||null;
+  const outsider=outsiderChance(botCharacter,hints,botName);
+  const direct=mentioned(text,botName);
 
-  // Update suspicion memory from actual clues.
-  const ownWords=new Set(keywordsFor(botCharacter).map(norm));
-  for(const h of recentHints){
-    if(h.playerName===botName)continue;
-    const key=h.playerName||h.playerId;
-    const mismatch=ownWords.has(norm(h.word)) ? -1 : 1;
-    mem.suspects[key]=(mem.suspects[key]||0)+mismatch;
-  }
-
-  const suspects=Object.entries(mem.suspects).sort((a,b)=>b[1]-a[1]);
-  const topSuspect=suspects[0]?.[0]||weak?.playerName||null;
-
-  const roundComplete=!!context.roundComplete;
-
-  const asksOwnHint =
+  const asksOwn=
     /\b(ton|votre)\s+(indice|mot)\b/i.test(text) ||
     /\b(donne|dis|rappelle).*(le tien|ton|votre)\b/i.test(text) ||
     /\btu as mis quoi\b/i.test(text);
-
-  const asksWhy =
-    /\bpourquoi\b/i.test(text) &&
-    (
-      t.includes(norm(botName)) ||
-      /\bton\b/i.test(text) ||
-      (ownHint && t.includes(norm(ownHint.word)))
-    );
-
-  const asksSuspect =
+  const asksWhy=/\bpourquoi\b/i.test(text)&&(direct||/\bton\b/i.test(text)||(mine&&t.includes(norm(mine.word))));
+  const asksSuspect=
     /\b(qui|lequel|laquelle).*(suspect|imposteur)/i.test(text) ||
     /\btu (suspectes?|soupçonnes?)\s+qui/i.test(text) ||
     /\btu (penses|crois).*(qui|imposteur)/i.test(text);
+  const asksVote=/\b(on vote|voter|vote maintenant|tu veux voter)\b/i.test(text);
+  const asksDefense=direct&&/(defend|défend|repond|répond|explique|argument|tu dis rien|tu ne dis rien|imposteur|suspect|c.?est toi|je crois que c.?est|je pense que c.?est)/i.test(text);
 
-  const asksVote =
-    /\b(on vote|voter|vote maintenant|tu veux voter)\b/i.test(text);
-
-  const directDefense =
-    looksLikeDefenseDemand(text,botName) ||
-    looksLikeAccusation(text,botName);
-
-  // Human says their own clue.
   let sharedWord=null;
-  const shared=text.match(
-    /(?:mon indice|mon mot|le mien)\s*(?:c.?est|est|=|:)?\s*[«"']?([A-Za-zÀ-ÿ-]{2,22})/i
-  );
+  const shared=text.match(/(?:mon indice|mon mot|le mien)\s*(?:c.?est|est|=|:)?\s*[«"']?([A-Za-zÀ-ÿ-]{2,22})/i);
   if(shared)sharedWord=shared[1];
 
-  // 1. Direct accusation / demand to defend => ARGUMENT, don't say "Quoi ?"
-  if(directDefense){
-    return clipHuman(
-      argumentativeDefense(botName,botCharacter,recentHints,participants),
-      28
-    );
-  }
-
-  // 2. Asked for own clue.
-  if(asksOwnHint){
-    if(ownHint){
+  if(asksDefense){
+    if(lvl>=3&&outsider>.62&&mine){
       return uniquePick(botName,[
-        `J’ai mis « ${ownHint.word} ».`,
-        `Mon indice, c’est « ${ownHint.word} ».`,
-        `J’ai donné « ${ownHint.word} ».`
+        defense(botName,botCharacter,hints),
+        `Je garde « ${mine.word} ». Je préfère analyser vos indices plutôt que trop révéler le mien.`
       ]);
     }
-    return uniquePick(botName,[
-      "J’ai pas encore donné mon indice.",
-      "Pas encore, mon tour n’est pas passé."
-    ]);
+    return defense(botName,botCharacter,hints);
   }
 
-  // 3. Asked why.
+  if(asksOwn){
+    if(mine)return uniquePick(botName,[
+      `J’ai mis « ${mine.word} ».`,
+      `Mon indice, c’est « ${mine.word} ».`,
+      `J’ai donné « ${mine.word} ».`
+    ]);
+    return uniquePick(botName,["Je n’ai pas encore joué.","Mon tour n’est pas encore passé."]);
+  }
+
   if(asksWhy){
-    if(!ownHint){
-      return uniquePick(botName,["J’ai pas encore joué.","Attends mon indice d’abord."]);
-    }
-
-    if(weak){
-      return clipHuman(uniquePick(botName,[
-        `J’ai choisi « ${ownHint.word} » parce que ça colle bien au mien. Je trouve « ${weak.word} » plus difficile à justifier.`,
-        `« ${ownHint.word} » a une logique pour moi. Je veux surtout entendre ${weak.playerName} expliquer « ${weak.word} ».`,
-        `Je voulais rester vague avec « ${ownHint.word} », sans être hors sujet.`
-      ]),26);
-    }
-
+    if(!mine)return "Je n’ai pas encore joué.";
+    if(weak&&lvl>=2)return uniquePick(botName,[
+      `« ${mine.word} » correspond bien au mien. J’aimerais surtout comprendre « ${weak.word} » de ${weak.playerName}.`,
+      `Je voulais rester assez vague avec « ${mine.word} ». « ${weak.word} » me paraît plus étrange.`,
+      `« ${mine.word} » a une logique sans trop révéler.`
+    ]);
     return uniquePick(botName,[
-      `Parce que « ${ownHint.word} » correspond bien au mien sans trop révéler.`,
-      `Je voulais donner quelque chose de juste sans rendre le personnage évident.`
+      `Parce que « ${mine.word} » correspond au mien sans trop révéler.`,
+      `Je voulais être juste sans rendre le personnage évident.`
     ]);
   }
 
-  // 4. Human shares own clue -> react to that exact clue.
   if(sharedWord){
-    const close=ownWords.has(norm(sharedWord));
-    if(close){
-      return uniquePick(botName,[
-        `« ${sharedWord} », oui, je vois le rapport.`,
-        `Ton « ${sharedWord} » me paraît cohérent.`,
-        `Je comprends « ${sharedWord} ». Pour l’instant ça me choque pas.`
-      ]);
-    }
-
-    return uniquePick(botName,[
-      `« ${sharedWord} », j’aimerais bien que tu l’expliques.`,
-      `Je vois moins le lien avec « ${sharedWord} ».`,
-      `Ton « ${sharedWord} » me paraît assez vague pour l’instant.`
-    ]);
+    const own=new Set(keywordsFor(botCharacter).map(norm));
+    return own.has(norm(sharedWord))
+      ? uniquePick(botName,[`« ${sharedWord} », oui, je comprends.`,`Ton « ${sharedWord} » me paraît cohérent.`])
+      : uniquePick(botName,[`« ${sharedWord} », explique ton idée.`,`Je vois moins le lien avec « ${sharedWord} ».`]);
   }
 
-  // 5. Ask who bot suspects -> give a reason based on clues.
   if(asksSuspect){
-    if(topSuspect){
-      const suspectHint=latestHintOf(recentHints,topSuspect);
-      if(suspectHint){
-        return clipHuman(uniquePick(botName,[
-          `Pour l’instant ${topSuspect}. Son « ${suspectHint.word} » me paraît moins cohérent.`,
-          `Je surveille ${topSuspect}, surtout à cause de « ${suspectHint.word} ».`,
-          `${topSuspect} pour le moment. J’attends une meilleure explication de « ${suspectHint.word} ».`
-        ]),22);
-      }
-      return uniquePick(botName,[
-        `Pour l’instant, ${topSuspect}.`,
-        `Je surveille surtout ${topSuspect}.`
+    if(suspect){
+      const h=latestHint(hints,suspect);
+      if(h)return uniquePick(botName,[
+        `Pour l’instant ${suspect}. Son « ${h.word} » me paraît moins cohérent.`,
+        `Je surveille ${suspect}, surtout à cause de « ${h.word} ».`,
+        `${suspect} pour le moment. J’attends une meilleure explication de « ${h.word} ».`
       ]);
+      return `Pour l’instant ${suspect}.`;
     }
-    return uniquePick(botName,[
-      "J’ai pas encore assez d’éléments.",
-      "Pas de suspect clair pour l’instant."
-    ]);
+    return uniquePick(botName,["Je n’ai pas encore de suspect clair.","Pas assez d’éléments pour trancher."]);
   }
 
-  // 6. Vote discussion.
   if(asksVote){
-    if(roundComplete){
-      return uniquePick(botName,[
-        topSuspect ? `Oui. Si on vote maintenant, je regarde surtout ${topSuspect}.` : "Oui, là on peut voter.",
-        "On a assez d’indices pour tenter un vote."
+    const enough=(context.tranche||1)>=2||hints.length>=participants.length*2;
+    return enough
+      ? uniquePick(botName,[suspect?`On peut tenter. Je regarde surtout ${suspect}.`:"Oui, on a déjà pas mal d’indices.","Je suis prêt à voter si la majorité veut."])
+      : uniquePick(botName,["J’attendrais encore une tranche.","Pas encore. Je veux quelques indices de plus."]);
+  }
+
+  for(const p of participants){
+    if(p.name===botName)continue;
+    if(mentioned(text,p.name)&&/(suspect|imposteur|c.?est|je crois|je pense)/i.test(text)){
+      const h=latestHint(hints,p.name);
+      if(h&&suspect===p.name)return uniquePick(botName,[
+        `Je comprends. Son « ${h.word} » me fait douter aussi.`,
+        `Possible. « ${h.word} » est justement un indice faible.`,
+        `${p.name} est aussi dans mes suspects à cause de « ${h.word} ».`
+      ]);
+      if(h)return uniquePick(botName,[
+        `Je ne suis pas encore convaincu pour ${p.name}. « ${h.word} » peut se défendre.`,
+        `Peut-être, mais « ${h.word} » ne suffit pas pour moi.`
       ]);
     }
-    return uniquePick(botName,[
-      "Pas encore. Je veux au moins entendre les prochains indices.",
-      "J’attendrais encore un peu avant de voter."
-    ]);
   }
 
-  // 7. Someone accuses another player. Bot can agree/disagree with a reason.
-  if(target && target!==botName && /(c.?est|suspect|imposteur|je crois|je pense)/i.test(text)){
-    const th=latestHintOf(recentHints,target);
-    if(th){
-      const suspicious = topSuspect===target || (weak && weak.playerName===target);
-      if(suspicious){
-        return clipHuman(uniquePick(botName,[
-          `Je comprends. Son « ${th.word} » me fait douter aussi.`,
-          `Possible. « ${th.word} » est justement un des indices que je trouve faibles.`,
-          `Oui, ${target} est aussi dans mes suspects à cause de « ${th.word} ».`
-        ]),22);
-      }
+  if(direct)return uniquePick(botName,[
+    "Oui, je t’écoute.",
+    "Vas-y, qu’est-ce qui te paraît suspect ?",
+    "Je t’écoute. Tu veux que j’explique quoi ?"
+  ]);
 
-      return clipHuman(uniquePick(botName,[
-        `Je suis pas encore convaincu pour ${target}. Son « ${th.word} » peut se défendre.`,
-        `Peut-être, mais « ${th.word} » ne suffit pas pour moi.`,
-        `J’attendrais avant d’accuser ${target}.`
-      ]),20);
-    }
-  }
+  if(lvl>=2&&weak&&Math.random()<.30)return uniquePick(botName,[
+    `${weak.playerName}, explique ton « ${weak.word} ».`,
+    `Je veux comprendre le « ${weak.word} » de ${weak.playerName}.`,
+    `Le « ${weak.word} » de ${weak.playerName} me paraît vague.`
+  ]);
 
-  // 8. Direct mention with no clear intent: answer naturally, but not "Quoi ?" every time.
-  if(mentioned(text,botName)){
-    return uniquePick(botName,[
-      "Oui, je t’écoute.",
-      "Vas-y, dis-moi.",
-      "Je t’écoute. Qu’est-ce qui te paraît suspect ?",
-      "Oui ? Tu veux que j’explique quoi ?"
-    ]);
-  }
-
-  // 9. Proactive contextual reaction: ask about an actual clue.
-  if(weak && Math.random()<.45){
-    return uniquePick(botName,[
-      `${weak.playerName}, explique ton « ${weak.word} ».`,
-      `Je veux comprendre le « ${weak.word} » de ${weak.playerName}.`,
-      `Le « ${weak.word} » de ${weak.playerName} me paraît vague.`
-    ]);
-  }
-
-  // 10. Otherwise, silence is more human than another generic repeated sentence.
   return null;
 }
 
-export function shouldBotReply(botName,lastMessage,messages=[]){
+export function shouldBotReply(botName,lastMessage,messages=[],difficulty="Normal"){
   if(!lastMessage)return false;
   const text=String(lastMessage.text||"");
-  const t=norm(text);
-
-  // Always respond if directly named.
   if(mentioned(text,botName))return true;
-
-  // High priority game intents.
-  const important =
-    /\b(ton indice|ton mot|le tien|pourquoi|qui.*suspect|qui.*imposteur|on vote|voter|imposteur|suspect)\b/i.test(text);
-
-  if(important)return Math.random()<.72;
-
-  // Normal chatter: bots often stay silent.
-  return Math.random()<.18;
+  const important=/\b(ton indice|ton mot|le tien|pourquoi|qui.*suspect|qui.*imposteur|on vote|voter|imposteur|suspect)\b/i.test(text);
+  if(important)return Math.random()<(level(difficulty)>=2?.76:.58);
+  return Math.random()<(level(difficulty)>=3?.22:.13);
 }
 
-export function botReplyDelay(botName,lastMessage){
-  const direct=lastMessage && mentioned(lastMessage.text,botName);
-  const base=direct?550:900;
-  return base + Math.floor(Math.random()*(direct?900:1700));
+export function botReplyDelay(botName,lastMessage,difficulty="Normal"){
+  const direct=lastMessage&&mentioned(lastMessage.text,botName);
+  const lvl=level(difficulty);
+  return Math.max(320,(direct?420:700)+Math.floor(Math.random()*(direct?850:1250))-(lvl-1)*80);
 }
