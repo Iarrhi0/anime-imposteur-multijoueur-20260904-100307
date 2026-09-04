@@ -1,9 +1,9 @@
 import { firebaseConfig } from "./firebase-config.js";
-import { animeDB, chooseIntelligentPair, getAiStats } from "./ai-engine.js?v=6.10";
+import { animeDB, chooseIntelligentPair, getAiStats } from "./ai-engine.js?v=6.12";
 import {
   chooseBotHint, chooseBotVote, botVoteApproval, buildBotDiscussion,
   shouldBotReply, botReplyDelay
-} from "./bot-engine.js?v=6.10";
+} from "./bot-engine.js?v=6.12";
 
 const $=s=>document.querySelector(s);
 const $$=s=>[...document.querySelectorAll(s)];
@@ -396,12 +396,12 @@ async function enterRoom(code){
 
   unsubs.push(onSnapshot(collection(db,"rooms",code,"players"),snap=>{
     players=snap.docs.map(d=>({id:d.id,...d.data(),bot:false}));
-    renderLobbyPlayers();renderGamePlayers();renderScores();
+    renderLobbyPlayers();renderGamePlayers();renderScores();renderTurn();
     if(isHost)hostTick().catch(console.error);
   }));
   unsubs.push(onSnapshot(collection(db,"rooms",code,"bots"),snap=>{
     bots=snap.docs.map(d=>({id:d.id,...d.data(),bot:true}));
-    renderLobbyPlayers();renderGamePlayers();renderScores();
+    renderLobbyPlayers();renderGamePlayers();renderScores();renderTurn();
     if(isHost)hostTick().catch(console.error);
   }));
   unsubs.push(onSnapshot(collection(db,"rooms",code,"hints"),snap=>{
@@ -503,9 +503,8 @@ function orderedParticipants(){
     (currentRoomData?.roster||[]).map(p=>[p.id,{...p}])
   );
 
-  // The room order is authoritative. Never remove someone just because
-  // one Firestore listener has not loaded that participant yet.
-  return (currentRoomData?.order||[]).map(id=>
+  // Use the recovered order too. This is what fixes "0/?" + Synchronisation.
+  return roundOrder().map(id=>
     liveMap.get(id)
     || rosterMap.get(id)
     || {id,name:"Joueur",bot:String(id).startsWith("bot_"),score:0}
@@ -575,7 +574,28 @@ async function renderCharacter(){
 }
 
 function roundOrder(){
-  return currentRoomData?.order||[];
+  const explicit=currentRoomData?.order||[];
+  if(explicit.length)return explicit;
+
+  // Recovery path for rooms created by older / partially synchronized builds.
+  const roster=(currentRoomData?.roster||[]).map(p=>p.id).filter(Boolean);
+  if(roster.length)return roster;
+
+  // Last-resort live roster. This makes the UI usable immediately,
+  // even before the host has repaired the room document in Firebase.
+  const live=participants();
+  if(live.length){
+    return [...live]
+      .sort((a,b)=>{
+        const aj=a.joinedAt?.seconds||a.joinedAt?.milliseconds||0;
+        const bj=b.joinedAt?.seconds||b.joinedAt?.milliseconds||0;
+        if(aj!==bj)return aj-bj;
+        return String(a.name||"").localeCompare(String(b.name||""));
+      })
+      .map(p=>p.id);
+  }
+
+  return [];
 }
 
 function hintsForCurrentRound(){
@@ -621,8 +641,8 @@ function renderTurn(){
       <div class="turn-avatar">…</div>
       <div class="turn-copy">
         <span class="turn-kicker">TRANCHE ${tranche} • ${givenCount}/${rawOrder.length||"?"}</span>
-        <strong>Synchronisation…</strong>
-        <small>La boucle d’indices continue automatiquement.</small>
+        <strong>Connexion des joueurs…</strong>
+        <small>Le jeu reconstruit automatiquement l’ordre.</small>
       </div>`;
     send.disabled=true;
     send.classList.remove("ready");
@@ -859,13 +879,26 @@ async function nextHintRound(){
 }
 
 async function sendHint(){
-  if(currentRoomData.status!=="playing")return;
-  const order=orderedParticipants(),p=order[currentRoomData.turnIndex];
+  if(currentRoomData.status!=="playing"){
+    toast("Indices indisponibles","Le vote est peut-être en cours.");
+    return;
+  }
 
-  if(p?.id!==currentUser.uid){
+  const order=orderedParticipants();
+  const idx=currentRoomData.turnIndex||0;
+  const p=order[idx];
+
+  if(!p){
+    // Ask the host to repair immediately if possible.
+    if(isHost)hostEnsureParticipantOrder().catch(console.error);
+    toast("Synchronisation","Reconstruction de l’ordre des joueurs…");
+    return;
+  }
+
+  if(p.id!==currentUser.uid){
     toast(
       "Pas encore ton tour",
-      p ? `C’est à ${p.name} de donner son indice.` : "Le tour se prépare."
+      `C’est à ${p.name} de donner son indice.`
     );
     return;
   }
@@ -954,33 +987,65 @@ async function hostEnsureParticipantOrder(){
   if(!isHost||!currentRoomData)return;
   if(!["playing","vote_request","voting"].includes(currentRoomData.status))return;
 
-  const oldOrder=currentRoomData.order||[];
+  const explicit=currentRoomData.order||[];
+  if(explicit.length)return;
 
-  // Do NOT prune an active game's order from transient local snapshots.
-  if(oldOrder.length)return;
+  let recovered=[];
 
-  const rosterIds=(currentRoomData.roster||[]).map(p=>p.id);
-  if(rosterIds.length){
-    await fb.fsMod.updateDoc(
-      fb.fsMod.doc(db,"rooms",currentRoom),
-      {order:rosterIds,turnIndex:0}
-    );
-    return;
+  const roster=currentRoomData.roster||[];
+  if(roster.length){
+    recovered=roster.map(p=>p.id).filter(Boolean);
   }
 
-  // Compatibility only for a game created by an older version.
-  const live=participants();
-  if(live.length>=3){
-    await fb.fsMod.updateDoc(
-      fb.fsMod.doc(db,"rooms",currentRoom),
-      {
-        order:live.map(p=>p.id),
-        roster:live.map(p=>({id:p.id,name:p.name,bot:!!p.bot})),
-        participantCount:live.length,
-        turnIndex:0
-      }
-    );
+  if(!recovered.length){
+    const live=participants();
+    if(live.length){
+      recovered=[...live]
+        .sort((a,b)=>{
+          const aj=a.joinedAt?.seconds||0;
+          const bj=b.joinedAt?.seconds||0;
+          if(aj!==bj)return aj-bj;
+          return String(a.name||"").localeCompare(String(b.name||""));
+        })
+        .map(p=>p.id);
+    }
   }
+
+  if(!recovered.length)return;
+
+  const liveMap=new Map(participants().map(p=>[p.id,p]));
+  const recoveredRoster=recovered.map(id=>{
+    const p=liveMap.get(id);
+    return {
+      id,
+      name:p?.name || (currentRoomData.roster||[]).find(x=>x.id===id)?.name || "Joueur",
+      bot:!!(p?.bot || String(id).startsWith("bot_"))
+    };
+  });
+
+  // If some clues already exist, keep turnIndex on the first player
+  // in the recovered order who has NOT given a clue in this tranche.
+  const given=new Set(
+    currentGameHints()
+      .filter(h=>h.round===currentRoomData.hintRound)
+      .map(h=>h.playerId)
+  );
+
+  let repairedTurn=0;
+  const firstMissing=recovered.findIndex(id=>!given.has(id));
+  if(firstMissing>=0)repairedTurn=firstMissing;
+
+  await fb.fsMod.updateDoc(
+    fb.fsMod.doc(db,"rooms",currentRoom),
+    {
+      order:recovered,
+      roster:recoveredRoster,
+      participantCount:recovered.length,
+      turnIndex:repairedTurn
+    }
+  );
+
+  toast("Ordre réparé",`${recovered.length} joueurs synchronisés.`);
 }
 
 async function hostActivateProposal(){
@@ -1309,7 +1374,10 @@ async function maybeBotDiscuss(){
         participants(),
         {roundComplete:isCurrentHintRoundComplete()}
       );
-      await sendMessage(text,false,candidate.id,candidate.name);
+
+      if(text && String(text).trim()){
+        await sendMessage(text,false,candidate.id,candidate.name);
+      }
     }catch(e){
       console.warn("Bot reply failed",e);
     }finally{

@@ -992,3 +992,15 @@ body{
   font-weight:950;
   white-space:nowrap;
 }
+
+/* V6.11 — visible send state */
+.hint-send-btn.ready{
+  background:#7c3aed!important;
+  color:#fff!important;
+  box-shadow:0 0 0 3px rgba(124,58,237,.18),0 8px 20px rgba(124,58,237,.32)!important;
+  transform:scale(1.02);
+}
+.hint-send-btn:not(.ready){
+  background:#223447!important;
+  color:#6f8397!important;
+}
