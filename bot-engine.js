@@ -122,16 +122,30 @@ export function botVoteApproval(botCharacter,hints,botName=""){
   return Math.random() < Math.min(.9,persona.agree+evidence);
 }
 
-export function buildBotDiscussion(botName,botCharacter,hints,messages,participants=[]){
+export function buildBotDiscussion(
+  botName,
+  botCharacter,
+  hints,
+  messages,
+  participants=[],
+  context={}
+){
   const persona=PERSONAS[botName]||PERSONAS.Yuki;
   const mem=getMem(botName);
   const last=messages[messages.length-1];
+  const text=String(last?.text||"").trim();
+  const t=norm(text);
   const ownWords=keywordsFor(botCharacter);
-  const recentHints=hints.slice(-7);
+  const recentHints=hints.slice(-12);
+  const ownHint=[...recentHints].reverse().find(h=>h.playerName===botName);
+  const othersHints=recentHints.filter(h=>h.playerName!==botName);
 
-  // Update suspicion memory.
-  for(const h of recentHints){
-    if(h.playerName===botName)continue;
+  const roundComplete=context.roundComplete ?? (
+    participants.length>0 &&
+    new Set(recentHints.map(h=>h.playerId)).size>=participants.length
+  );
+
+  for(const h of othersHints){
     const key=h.playerName||h.playerId;
     const mismatch=ownWords.some(w=>norm(w)===norm(h.word)) ? -1 : 1;
     mem.suspects[key]=(mem.suspects[key]||0)+mismatch;
@@ -140,100 +154,134 @@ export function buildBotDiscussion(botName,botCharacter,hints,messages,participa
   const suspects=Object.entries(mem.suspects).sort((a,b)=>b[1]-a[1]);
   const topSuspect=suspects[0]?.[0];
 
-  let options=[];
+  const asksOwnHint =
+    /\b(ton|votre)\s+(indice|mot)\b/i.test(text) ||
+    /\b(donne|dis|rappelle).*(le tien|ton|votre)\b/i.test(text) ||
+    /\bc.?est quoi.*(le tien|ton).*(indice|mot)?/i.test(text) ||
+    /\bquel(le)? est.*(ton|votre).*(indice|mot)/i.test(text) ||
+    /\btu as mis quoi\b/i.test(text);
 
-  // Direct mention -> answer directly, short.
-  if(last && last.playerName!==botName && mentioned(last.text,botName)){
-    if(isQuestion(last.text)){
-      options.push(
-        "Parce que ça colle bien au mien.",
-        "Je voulais pas être trop évident.",
-        "C’est surtout son style qui m’a fait penser à ça.",
-        "J’assume mon indice, il est logique.",
-        "Je peux pas en dire plus sans trop révéler."
-      );
-    }else{
-      options.push(
-        "Oui je vois ce que tu veux dire.",
-        "Pas forcément.",
-        "Je suis pas d’accord là.",
-        "Possible, mais j’attends encore.",
-        "Tu me soupçonnes trop vite."
-      );
-    }
-  }
-
-  // If someone asks "pourquoi" and references a clue, answer/explain naturally.
-  if(last && isQuestion(last.text)){
-    const hit=recentHints.find(h=>containsAny(last.text,[h.word]) && h.playerName===botName);
-    if(hit){
-      options.unshift(
-        `Parce que « ${hit.word} » décrit bien le mien.`,
-        `J’ai choisi « ${hit.word} » pour rester vague.`,
-        `« ${hit.word} », c’était le meilleur mot sans trop révéler.`
-      );
-    }
-  }
-
-  // React to latest foreign hint.
-  const foreign=[...recentHints].reverse().find(h=>h.playerName!==botName && !ownWords.some(w=>norm(w)===norm(h.word)));
-  if(foreign){
-    options.push(
-      `${foreign.playerName}, ton « ${foreign.word} » me paraît bizarre.`,
-      `« ${foreign.word} »… j’aime pas trop cet indice.`,
-      `${foreign.playerName}, explique « ${foreign.word} ».`,
-      `Je comprends pas trop « ${foreign.word} ».`
+  const asksWhy =
+    /\bpourquoi\b/i.test(text) &&
+    (
+      /\bton\b/i.test(text) ||
+      (ownHint && t.includes(norm(ownHint.word)))
     );
+
+  const asksSuspect =
+    /\b(qui|lequel|laquelle).*(suspect|imposteur)/i.test(text) ||
+    /\b(qui).*(tu ).*(suspectes?|soupçonnes?)/i.test(text) ||
+    /\btu (penses|crois).*(qui|imposteur)/i.test(text) ||
+    /\btu (suspectes?|soupçonnes?)\s+qui/i.test(text);
+
+  const accusation =
+    /\b(tu es|t.?es|c.?est toi).*(imposteur|suspect)\b/i.test(text) ||
+    /\bje (pense|crois).*(que )?c.?est toi\b/i.test(text);
+
+  const asksVote =
+    /\b(on vote|voter|vote maintenant|tu veux voter)\b/i.test(text);
+
+  let sharedWord=null;
+  const share=text.match(
+    /(?:mon indice|mon mot|le mien)\s*(?:c.?est|est|=|:)?\s*[«"']?([A-Za-zÀ-ÿ-]{2,22})/i
+  );
+  if(share)sharedWord=share[1];
+
+  // "Donne-moi ton indice" => always answer the actual clue.
+  if(asksOwnHint){
+    if(ownHint){
+      return pick([
+        `J’ai mis « ${ownHint.word} ».`,
+        `Mon indice, c’est « ${ownHint.word} ».`,
+        `J’ai donné « ${ownHint.word} ».`
+      ]);
+    }
+    return "J’ai pas encore donné mon indice.";
   }
 
-  // Persona-specific short lines.
-  if(topSuspect){
-    if(persona.style==="detective"||persona.style==="cold"){
-      options.push(
-        `${topSuspect} me paraît le plus suspect.`,
-        `Je garde un œil sur ${topSuspect}.`,
-        `${topSuspect}, tes indices collent moins.`
-      );
-    }
-    if(persona.style==="defensive"){
-      options.push(
-        "Je me défends juste, ça veut pas dire que je mens.",
-        "Mon indice est cohérent, vraiment.",
-        "Vous me ciblez un peu vite."
-      );
-    }
-    if(persona.style==="friendly"||persona.style==="soft"){
-      options.push(
-        `Je suis pas sûr pour ${topSuspect}.`,
-        "J’attendrais encore un tour.",
-        "On peut poser une question avant de voter."
-      );
-    }
-    if(persona.style==="casual"){
-      options.push(
-        `${topSuspect} est un peu louche là.`,
-        "Moi j’attends encore.",
-        "Franchement je sais pas encore."
-      );
-    }
+  if(asksWhy){
+    if(!ownHint)return "J’ai pas encore joué.";
+    return pick([
+      `Parce que « ${ownHint.word} » colle bien au mien.`,
+      `Je voulais rester vague avec « ${ownHint.word} ».`,
+      `« ${ownHint.word} » était assez juste sans trop révéler.`
+    ]);
   }
 
-  options.push(
-    "J’attends encore un indice.",
-    "Je suis pas sûr.",
-    "Ça se tient.",
-    "Bof, pas convaincu.",
-    "On vote pas encore.",
-    "Je veux une autre manche.",
-    "Là j’ai un doute."
+  if(sharedWord){
+    const close=ownWords.some(w=>norm(w)===norm(sharedWord));
+    if(close){
+      return pick([
+        `« ${sharedWord} », oui ça colle.`,
+        `Ton « ${sharedWord} » me paraît logique.`,
+        `Oui, « ${sharedWord} » je comprends.`
+      ]);
+    }
+    return pick([
+      `« ${sharedWord} », c’est assez vague.`,
+      `Je vois l’idée pour « ${sharedWord} ».`,
+      `Hmm, « ${sharedWord} »… possible.`
+    ]);
+  }
+
+  if(asksSuspect){
+    if(topSuspect){
+      return pick([
+        `Pour l’instant, ${topSuspect}.`,
+        `Je surveille surtout ${topSuspect}.`,
+        `${topSuspect} me paraît le plus louche.`
+      ]);
+    }
+    return "J’ai pas encore de suspect clair.";
+  }
+
+  if(accusation){
+    return pick([
+      "Non, tu me soupçonnes trop vite.",
+      "Pourquoi moi ? Mon indice tient.",
+      "Je pense que tu te trompes.",
+      "Pas moi, regarde les indices."
+    ]);
+  }
+
+  if(asksVote){
+    if(roundComplete){
+      return pick([
+        "On peut voter si vous voulez.",
+        "Oui, là on a assez d’indices.",
+        "Moi je peux voter maintenant."
+      ]);
+    }
+    return pick([
+      "J’attendrais les autres indices.",
+      "Pas encore, tout le monde n’a pas joué.",
+      "Je préfère finir les indices d’abord."
+    ]);
+  }
+
+  if(last && last.playerName!==botName && mentioned(text,botName)){
+    return pick(["Oui ?","Quoi ?","Je t’écoute.","Vas-y."]);
+  }
+
+  const foreign=[...othersHints].reverse().find(
+    h=>!ownWords.some(w=>norm(w)===norm(h.word))
   );
 
-  // Avoid repeating exact same message.
-  options=options.filter(x=>!mem.lastReplies.includes(x));
-  if(!options.length)options=["Je sais pas encore."];
+  if(foreign && Math.random()<.50){
+    return pick([
+      `${foreign.playerName}, explique « ${foreign.word} ».`,
+      `« ${foreign.word} », je trouve ça vague.`,
+      `${foreign.playerName}, ton indice me fait douter.`
+    ]);
+  }
 
-  let reply=pick(options);
-  reply=trimReply(reply,13);
+  const options=roundComplete
+    ? ["J’ai encore un doute.","Je regarde surtout les indices.","Pas facile de trancher.","J’ai quelqu’un en tête."]
+    : ["J’attends les autres indices.","Je veux voir les prochains mots.","Pas assez d’indices pour moi.","Je préfère attendre un peu."];
+
+  const filtered=options.filter(x=>!mem.lastReplies.includes(x));
+  let reply=pick(filtered.length?filtered:options);
+  reply=trimReply(reply,12);
   reply=addRareEmoji(reply,persona.emoji);
 
   mem.lastReplies=[reply,...mem.lastReplies].slice(0,5);
@@ -244,16 +292,21 @@ export function shouldBotReply(botName,lastMessage,messages=[]){
   const persona=PERSONAS[botName]||PERSONAS.Yuki;
   if(!lastMessage)return false;
 
-  // Always more likely if directly mentioned.
-  if(mentioned(lastMessage.text,botName))return Math.random()<.92;
+  const text=String(lastMessage.text||"");
 
-  // Otherwise human-like: often stay silent.
-  let chance=.28;
-  if(isQuestion(lastMessage.text))chance+=.20;
-  if(persona.style==="detective")chance+=.08;
-  if(persona.style==="casual")chance+=.05;
+  if(mentioned(text,botName))return true;
 
-  return Math.random()<Math.min(.72,chance);
+  const directGameQuestion =
+    /\b(ton indice|ton mot|le tien|donne.*indice|dis.*tien|pourquoi|qui.*suspect|qui.*imposteur|on vote|voter)\b/i.test(text);
+
+  if(directGameQuestion)return Math.random()<.80;
+
+  let chance=.16;
+  if(isQuestion(text))chance+=.16;
+  if(persona.style==="detective")chance+=.05;
+  if(persona.style==="casual")chance+=.04;
+
+  return Math.random()<Math.min(.50,chance);
 }
 
 export function botReplyDelay(botName,lastMessage){

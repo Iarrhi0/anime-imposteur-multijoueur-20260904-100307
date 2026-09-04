@@ -12,7 +12,7 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icons/icon-192.png">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
-  <link rel="stylesheet" href="style.css?v=6.8">
+  <link rel="stylesheet" href="style.css?v=6.10">
 </head>
 <body>
   <div id="toast-layer" class="toast-layer"></div>
@@ -170,7 +170,7 @@
         <div class="game-top">
           <div class="game-room-meta">
             <span class="eyebrow">SALLE <b id="game-room-code">X7K2P</b></span>
-            <div id="game-round-label" class="game-round">Partie 1 • Manche 1</div>
+            <div id="game-round-label" class="game-round">Partie 1 • Tranche 1</div>
           </div>
           <div class="game-top-actions">
             <button id="propose-vote-btn" class="propose-vote">🗳️ VOTE</button>
@@ -225,9 +225,9 @@
           <div class="hint-entry-head">
             <div>
               <strong>Ton indice</strong>
-              <small>1 mot uniquement</small>
+              <small>1 mot par tranche • tranches illimitées</small>
             </div>
-            <button id="next-hint-round-btn" class="new-round-btn hidden">+ Manche</button>
+            <span id="tranche-pill" class="tranche-pill">Tranche 1</span>
           </div>
 
           <div id="hint-composer" class="hint-composer">
@@ -375,6 +375,6 @@
     </div>
   </main>
 
-  <script type="module" src="app.js?v=6.8"></script>
+  <script type="module" src="app.js?v=6.10"></script>
 </body>
 </html>

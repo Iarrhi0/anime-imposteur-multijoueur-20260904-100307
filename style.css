@@ -969,3 +969,26 @@ body{
   #hint-input{font-size:15px}
   .mobile-nav-btn{font-size:11px}
 }
+
+/* V6.9 — game state clarity */
+.turn-kicker{white-space:normal}
+.turn-banner.turn-waiting{
+  border-color:#7b6532;
+  background:linear-gradient(135deg,#2b2415,#152239);
+}
+
+/* V6.10 — continuous clue tranches */
+.tranche-pill{
+  min-height:32px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  padding:0 10px;
+  border-radius:999px;
+  background:#211744;
+  border:1px solid #583e91;
+  color:#ddd2ff;
+  font-size:10px;
+  font-weight:950;
+  white-space:nowrap;
+}

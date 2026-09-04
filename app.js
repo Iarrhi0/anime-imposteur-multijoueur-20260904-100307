@@ -1,9 +1,9 @@
 import { firebaseConfig } from "./firebase-config.js";
-import { animeDB, chooseIntelligentPair, getAiStats } from "./ai-engine.js?v=6.8";
+import { animeDB, chooseIntelligentPair, getAiStats } from "./ai-engine.js?v=6.10";
 import {
   chooseBotHint, chooseBotVote, botVoteApproval, buildBotDiscussion,
   shouldBotReply, botReplyDelay
-} from "./bot-engine.js?v=6.8";
+} from "./bot-engine.js?v=6.10";
 
 const $=s=>document.querySelector(s);
 const $$=s=>[...document.querySelectorAll(s)];
@@ -413,7 +413,12 @@ async function enterRoom(code){
       if(activeTab!=="hints"){unreadHints++;renderBadges()}
       toast(`${h.playerName} a donné un indice`,h.revealed?`« ${h.word} »`:"Indice enregistré");
     }
-    if(isHost)hostTick().catch(console.error);
+    if(isHost){
+      hostTick().catch(console.error);
+      if(isCurrentHintRoundComplete()){
+        maybeBotCommentAfterRound().catch(console.error);
+      }
+    }
   }));
   unsubs.push(onSnapshot(collection(db,"rooms",code,"messages"),snap=>{
     const oldIds=new Set(messages.map(x=>x.id));
@@ -476,7 +481,7 @@ function routeByStatus(prev){
   if(s==="postvote"){renderResult();renderMessages();renderScores()}
   if(voting)renderVoting();
   if(prev?.status!==s){
-    if(s==="vote_request")toast("Vote proposé","Plus de 50 % doivent accepter.");
+    if(s==="vote_request")toast("Vote proposé","La boucle d’indices continue jusqu’à plus de 50 % d’acceptation.");
     if(s==="voting")toast("Le vote commence","On voit qui a voté, pas son choix.");
     if(s==="postvote")toast("Résultat disponible","La discussion reste ouverte.");
   }
@@ -493,8 +498,18 @@ function participants(){
 }
 function participantById(id){return participants().find(p=>p.id===id)}
 function orderedParticipants(){
-  const map=new Map(participants().map(p=>[p.id,p]));
-  return (currentRoomData?.order||[]).map(id=>map.get(id)).filter(Boolean);
+  const liveMap=new Map(participants().map(p=>[p.id,p]));
+  const rosterMap=new Map(
+    (currentRoomData?.roster||[]).map(p=>[p.id,{...p}])
+  );
+
+  // The room order is authoritative. Never remove someone just because
+  // one Firestore listener has not loaded that participant yet.
+  return (currentRoomData?.order||[]).map(id=>
+    liveMap.get(id)
+    || rosterMap.get(id)
+    || {id,name:"Joueur",bot:String(id).startsWith("bot_"),score:0}
+  );
 }
 
 function renderLobbyPlayers(){
@@ -527,7 +542,9 @@ function renderGamePlayers(){
 
 function renderGameHeader(){
   if(!currentRoomData)return;
-  $("#game-round-label").textContent=`Partie ${currentRoomData.gameNo||0} • Manche ${currentRoomData.hintRound||0}`;
+  $("#game-round-label").textContent=`Partie ${currentRoomData.gameNo||0} • Tranche ${currentRoomData.hintRound||0}`;
+  const tranchePill=$("#tranche-pill");
+  if(tranchePill)tranchePill.textContent=`Tranche ${currentRoomData.hintRound||1}`;
   const labels={playing:"Indices / Discussion",vote_request:"Proposition de vote",voting:"Vote",postvote:"Résultat"};
   $("#phase-label").textContent=labels[currentRoomData.status]||currentRoomData.status;
   renderTurn();
@@ -557,54 +574,60 @@ async function renderCharacter(){
   }
 }
 
+function roundOrder(){
+  return currentRoomData?.order||[];
+}
+
+function hintsForCurrentRound(){
+  return currentGameHints().filter(h=>h.round===currentRoomData?.hintRound);
+}
+
+function roundHintPlayerIds(){
+  return new Set(hintsForCurrentRound().map(h=>h.playerId));
+}
+
+function isCurrentHintRoundComplete(){
+  const order=roundOrder();
+  if(!order.length)return false;
+  const given=roundHintPlayerIds();
+  return order.every(id=>given.has(id));
+}
+
 function renderTurn(){
   if(!currentRoomData||currentRoomData.status!=="playing")return;
 
   const order=orderedParticipants();
-  const p=order[currentRoomData.turnIndex];
-  const complete=currentRoomData.turnIndex>=order.length;
+  const rawOrder=roundOrder();
+  const idx=currentRoomData.turnIndex||0;
+  const p=order[idx];
   const input=$("#hint-input");
   const send=$("#send-hint-btn");
   const note=$("#hint-wait-note");
   const box=$("#turn-box");
 
-  // IMPORTANT V6.8:
-  // The player may ALWAYS type/draft their clue.
+  const given=roundHintPlayerIds();
+  const givenCount=rawOrder.filter(id=>given.has(id)).length;
+  const tranche=currentRoomData.hintRound||1;
+
   input.disabled=false;
   $("#hint-composer").classList.remove("hidden");
-  $("#next-hint-round-btn").classList.toggle("hidden",!(isHost&&complete));
 
-  if(complete){
-    box.className="turn-banner turn-complete";
-    box.innerHTML=`
-      <div class="turn-avatar">✓</div>
-      <div class="turn-copy">
-        <span class="turn-kicker">MANCHE TERMINÉE</span>
-        <strong>Tout le monde a donné son indice</strong>
-        <small>Discutez ou proposez un vote.</small>
-      </div>`;
-    send.disabled=true;
-    send.classList.remove("ready");
-    input.placeholder="Prépare ton prochain indice…";
-    note.textContent=isHost
-      ?"Tu peux lancer une nouvelle manche."
-      :"Tu peux déjà préparer ton prochain mot.";
-    return;
-  }
+  const tranchePill=$("#tranche-pill");
+  if(tranchePill)tranchePill.textContent=`Tranche ${tranche}`;
 
-  if(!p){
+  if(!rawOrder.length || !p){
     box.className="turn-banner turn-waiting";
     box.innerHTML=`
       <div class="turn-avatar">…</div>
       <div class="turn-copy">
-        <span class="turn-kicker">TOUR D’INDICE</span>
-        <strong>Préparation…</strong>
-        <small>Synchronisation des joueurs</small>
+        <span class="turn-kicker">TRANCHE ${tranche} • ${givenCount}/${rawOrder.length||"?"}</span>
+        <strong>Synchronisation…</strong>
+        <small>La boucle d’indices continue automatiquement.</small>
       </div>`;
     send.disabled=true;
     send.classList.remove("ready");
     input.placeholder="Prépare ton indice…";
-    note.textContent="Tu peux déjà écrire ton mot.";
+    note.textContent="Tu peux déjà préparer ton prochain mot.";
     return;
   }
 
@@ -615,19 +638,21 @@ function renderTurn(){
   box.innerHTML=`
     <div class="turn-avatar">${avatar}</div>
     <div class="turn-copy">
-      <span class="turn-kicker">${mine?"À TON TOUR":"TOUR D’INDICE"}</span>
+      <span class="turn-kicker">${mine?"À TON TOUR":`TRANCHE ${tranche} • ${givenCount}/${rawOrder.length}`}</span>
       <strong>${mine?"Donne ton indice":`Tour de ${esc(p.name)}${p.bot?" 🤖":""}`}</strong>
-      <small>${mine?"Un seul mot puis envoie.":p.bot?"L’IA choisit son mot…":"En attente de son indice…"}</small>
+      <small>${mine
+        ?"Un seul mot pour cette tranche."
+        :p.bot
+          ?"L’IA choisit son mot…"
+          :"En attente de son indice…"}</small>
     </div>`;
 
   send.disabled=!mine;
   send.classList.toggle("ready",mine);
-
-  // Never block typing. Drafting before the turn is allowed.
-  input.placeholder=mine?"Écris ton indice…":"Prépare ton indice à l’avance…";
+  input.placeholder=mine?"Écris ton indice…":"Prépare ton prochain indice…";
   note.textContent=mine
-    ?"Ton tour : appuie sur ➤ pour envoyer."
-    :`Tu peux écrire maintenant. Envoi disponible au tour de ${participantById(currentUser.uid)?.name||"toi"}.`;
+    ?`Tranche ${tranche} : appuie sur ➤ pour envoyer.`
+    :`Tu peux préparer ton mot pour ton prochain tour.`;
 
   if(mine){
     setTimeout(()=>{
@@ -641,7 +666,7 @@ function renderHints(){
   const data=currentGameHints().filter(h=>h.revealed||h.playerId===currentUser?.uid||isHost);
   $("#hint-count").textContent=data.length;
   $("#hints-list").innerHTML=data.length?data.map(h=>`<div class="hint-row">
-    <b>${esc(h.playerName)}</b><strong>${h.revealed?esc(h.word):"••••"}</strong><span>M${h.round}</span>
+    <b>${esc(h.playerName)}</b><strong>${h.revealed?esc(h.word):"••••"}</strong><span>T${h.round}</span>
   </div>`).join(""):`<div class="player-sub">Aucun indice pour le moment.</div>`;
   renderTurn();
 }
@@ -678,7 +703,7 @@ function renderVoteRequest(){
   const total=participants().length;
   const pct=Math.round(yes/Math.max(1,total)*100);
   const proposer=participantById(currentRoomData.voteRequestedBy);
-  $("#vote-request-by").textContent=`${proposer?.name||"Un joueur"} propose de voter.`;
+  $("#vote-request-by").textContent=`${proposer?.name||"Un joueur"} propose de voter après la tranche ${currentRoomData.hintRound||1}.`;
   $("#vote-request-progress").style.width=pct+"%";
   $("#vote-request-stats").textContent=`${yes}/${total} acceptent • ${pct}% • il faut plus de 50 %`;
   const mine=data.find(x=>x.playerId===currentUser.uid);
@@ -811,8 +836,15 @@ async function startGame(){
     gameNo,impostorId:impostor.id,majority,outsider,pairScore:pair.score||0
   });
 
+  const roster=all.map(p=>({
+    id:p.id,
+    name:p.name,
+    bot:!!p.bot
+  }));
+
   await updateDoc(doc(db,"rooms",currentRoom),{
-    status:"playing",gameNo,hintRound:1,turnIndex:0,order,
+    status:"playing",gameNo,hintRound:1,turnIndex:0,order,roster,
+    participantCount:roster.length,
     hiddenHints:$("#hidden-hints").checked,
     reconsiderSeconds:Number($("#reconsider-seconds").value||15),
     voteRequestToken:null,voteRequestedBy:null,voteStage:null,reconsiderEndsAt:null,result:null,
@@ -821,12 +853,9 @@ async function startGame(){
 }
 
 async function nextHintRound(){
-  if(!isHost||currentRoomData.status!=="playing")return;
-  const order=currentRoomData.order||[];if(!order.length)return;
-  const rotated=[...order.slice(1),order[0]];
-  await fb.fsMod.updateDoc(fb.fsMod.doc(db,"rooms",currentRoom),{
-    hintRound:(currentRoomData.hintRound||1)+1,turnIndex:0,order:rotated
-  });
+  // V6.10: no manual tranche button.
+  // Tranches start automatically after every participant gives one clue.
+  return;
 }
 
 async function sendHint(){
@@ -925,27 +954,31 @@ async function hostEnsureParticipantOrder(){
   if(!isHost||!currentRoomData)return;
   if(!["playing","vote_request","voting"].includes(currentRoomData.status))return;
 
-  const validIds=new Set(participants().map(p=>p.id));
   const oldOrder=currentRoomData.order||[];
-  const cleaned=oldOrder.filter(id=>validIds.has(id));
 
-  // Add any participant that joined/reappeared and is not in the order.
-  for(const p of participants()){
-    if(!cleaned.includes(p.id))cleaned.push(p.id);
-  }
+  // Do NOT prune an active game's order from transient local snapshots.
+  if(oldOrder.length)return;
 
-  let nextTurn=currentRoomData.turnIndex||0;
-  if(nextTurn>cleaned.length)nextTurn=cleaned.length;
-
-  const changed=
-    cleaned.length!==oldOrder.length ||
-    cleaned.some((id,i)=>id!==oldOrder[i]) ||
-    nextTurn!==(currentRoomData.turnIndex||0);
-
-  if(changed){
+  const rosterIds=(currentRoomData.roster||[]).map(p=>p.id);
+  if(rosterIds.length){
     await fb.fsMod.updateDoc(
       fb.fsMod.doc(db,"rooms",currentRoom),
-      {order:cleaned,turnIndex:nextTurn}
+      {order:rosterIds,turnIndex:0}
+    );
+    return;
+  }
+
+  // Compatibility only for a game created by an older version.
+  const live=participants();
+  if(live.length>=3){
+    await fb.fsMod.updateDoc(
+      fb.fsMod.doc(db,"rooms",currentRoom),
+      {
+        order:live.map(p=>p.id),
+        roster:live.map(p=>({id:p.id,name:p.name,bot:!!p.bot})),
+        participantCount:live.length,
+        turnIndex:0
+      }
     );
   }
 }
@@ -963,12 +996,59 @@ async function hostActivateProposal(){
 
 async function hostProcessTurn(){
   if(currentRoomData.status!=="playing")return;
-  const order=orderedParticipants();const idx=currentRoomData.turnIndex||0;
-  if(idx>=order.length)return;
-  const p=order[idx];if(!p)return;
-  const existing=currentGameHints().find(h=>h.round===currentRoomData.hintRound&&h.playerId===p.id);
 
-  if(p.bot&&!existing){
+  const rawOrder=roundOrder();
+  if(!rawOrder.length)return;
+
+  const given=roundHintPlayerIds();
+
+  // If everybody has given one clue in this tranche:
+  // immediately start the next tranche, back at player 1.
+  if(rawOrder.every(id=>given.has(id))){
+    const currentTranche=currentRoomData.hintRound||1;
+
+    // Optional short bot comment between tranches, but do not block the loop.
+    maybeBotCommentAfterRound().catch(console.error);
+
+    await fb.fsMod.updateDoc(
+      fb.fsMod.doc(db,"rooms",currentRoom),
+      {
+        hintRound:currentTranche+1,
+        turnIndex:0
+      }
+    );
+
+    lastRoundCommentKey="";
+    return;
+  }
+
+  let idx=currentRoomData.turnIndex||0;
+  if(idx>=rawOrder.length)idx=0;
+
+  // If this player already gave their clue for this tranche,
+  // move to the next player. Keep exactly the same order.
+  let safety=0;
+  while(safety<rawOrder.length && given.has(rawOrder[idx])){
+    idx=(idx+1)%rawOrder.length;
+    safety++;
+  }
+  if(safety>=rawOrder.length)return;
+
+  if(idx!==(currentRoomData.turnIndex||0)){
+    await fb.fsMod.updateDoc(
+      fb.fsMod.doc(db,"rooms",currentRoom),
+      {turnIndex:idx}
+    );
+  }
+
+  const order=orderedParticipants();
+  const p=order[idx];
+  if(!p)return;
+
+  const existing=hintsForCurrentRound().find(h=>h.playerId===p.id);
+  if(existing)return;
+
+  if(p.bot){
     let char=botAssignments[p.id];
 
     if(!char || char.gameNo!==currentRoomData.gameNo){
@@ -986,62 +1066,75 @@ async function hostProcessTurn(){
     }
 
     if(!char || char.gameNo!==currentRoomData.gameNo){
-      // Don't freeze forever: retry hostTick shortly.
-      setTimeout(()=>{ if(isHost) hostTick().catch(console.error); },500);
+      setTimeout(()=>{if(isHost)hostTick().catch(console.error)},500);
       return;
     }
 
-    const word=chooseBotHint(char.name,currentGameHints().map(h=>h.word));
+    const word=chooseBotHint(
+      char.name,
+      currentGameHints().map(h=>h.word)
+    );
+
     const {doc,setDoc,serverTimestamp}=fb.fsMod;
-    await setDoc(doc(db,"rooms",currentRoom,"hints",`g${currentRoomData.gameNo}_r${currentRoomData.hintRound}_${p.id}`),{
-      gameNo:currentRoomData.gameNo,round:currentRoomData.hintRound,playerId:p.id,playerName:p.name,word,
-      revealed:!currentRoomData.hiddenHints,orderIndex:idx,createdAt:serverTimestamp()
-    });
+
+    await setDoc(
+      doc(
+        db,
+        "rooms",
+        currentRoom,
+        "hints",
+        `g${currentRoomData.gameNo}_r${currentRoomData.hintRound}_${p.id}`
+      ),
+      {
+        gameNo:currentRoomData.gameNo,
+        round:currentRoomData.hintRound,
+        playerId:p.id,
+        playerName:p.name,
+        word,
+        revealed:!currentRoomData.hiddenHints,
+        orderIndex:idx,
+        createdAt:serverTimestamp()
+      }
+    );
     return;
   }
-  if(!existing)return;
 
-  const next=idx+1;
-  if(next>=order.length&&currentRoomData.hiddenHints){
-    const {writeBatch,doc}=fb.fsMod;const batch=writeBatch(db);
-    currentGameHints().filter(h=>h.round===currentRoomData.hintRound&&!h.revealed).forEach(h=>batch.update(doc(db,"rooms",currentRoom,"hints",h.id),{revealed:true}));
-    await batch.commit();
-  }
-  await fb.fsMod.updateDoc(fb.fsMod.doc(db,"rooms",currentRoom),{turnIndex:next});
-
-  if(next>=order.length){
-    setTimeout(()=>maybeBotCommentAfterRound().catch(console.error),250);
-  }
+  // Human turn: wait until that human sends their clue.
 }
-
 
 async function maybeBotCommentAfterRound(){
   if(!isHost || currentRoomData?.status!=="playing" || !bots.length)return;
 
-  const order=orderedParticipants();
-  if((currentRoomData.turnIndex||0) < order.length)return;
+  const rawOrder=roundOrder();
+  if(!rawOrder.length)return;
+
+  const given=roundHintPlayerIds();
+  if(!rawOrder.every(id=>given.has(id)))return;
 
   const key=`${currentRoomData.gameNo}_${currentRoomData.hintRound}`;
   if(lastRoundCommentKey===key)return;
   lastRoundCommentKey=key;
 
   const available=bots.filter(b=>botAssignments[b.id]);
-  if(!available.length)return;
-
-  // Only about 75% of completed rounds get an IA comment.
-  if(Math.random()>.75)return;
+  if(!available.length || Math.random()>.45)return;
 
   const b=available[Math.floor(Math.random()*available.length)];
   const a=botAssignments[b.id];
+
   const text=buildBotDiscussion(
-    b.name,a.name,currentGameHints(),messages,participants()
+    b.name,
+    a.name,
+    currentGameHints(),
+    messages,
+    participants(),
+    {roundComplete:true}
   );
 
   setTimeout(()=>{
     if(isHost && currentRoomData?.status==="playing"){
       sendMessage(text,false,b.id,b.name).catch(console.error);
     }
-  },650+Math.floor(Math.random()*900));
+  },500+Math.floor(Math.random()*650));
 }
 
 async function hostProcessVoteRequest(){
@@ -1213,7 +1306,8 @@ async function maybeBotDiscuss(){
         a.name,
         currentGameHints(),
         messages,
-        participants()
+        participants(),
+        {roundComplete:isCurrentHintRoundComplete()}
       );
       await sendMessage(text,false,candidate.id,candidate.name);
     }catch(e){
@@ -1370,7 +1464,6 @@ $("#fill-bots-btn").addEventListener("click",()=>fillBots(4));
 $("#close-bot-modal").addEventListener("click",()=>$("#bot-modal").classList.add("hidden"));
 $("#start-game-btn").addEventListener("click",()=>startGame().catch(e=>toast("Erreur",e.message)));
 $("#next-game-btn").addEventListener("click",()=>startGame().catch(e=>toast("Erreur",e.message)));
-$("#next-hint-round-btn").addEventListener("click",()=>nextHintRound().catch(e=>toast("Erreur",e.message)));
 $("#toggle-character-btn").addEventListener("click",()=>{const v=$("#toggle-character-btn").dataset.visible==="1";$("#toggle-character-btn").dataset.visible=v?"0":"1";$("#toggle-character-btn").textContent=v?"Voir":"Cacher";renderCharacter()});
 $("#send-hint-btn").addEventListener("click",()=>sendHint().catch(e=>toast("Erreur",e.message)));
 $("#hint-input").addEventListener("keydown",e=>{if(e.key==="Enter")$("#send-hint-btn").click()});
