@@ -40,7 +40,9 @@ public class MainActivity extends AppCompatActivity {
 
         getOnBackPressedDispatcher().addCallback(this,new OnBackPressedCallback(true) {
             @Override public void handleOnBackPressed() {
-                if(webView.canGoBack()) webView.goBack(); else finish();
+                // V6.6 : le bouton Retour Android ferme l'application,
+                // au lieu de parcourir l'historique de la WebView.
+                finishAffinity();
             }
         });
 

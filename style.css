@@ -418,3 +418,131 @@ body{
     gap:4px;
   }
 }
+
+
+/* =========================================================
+   V6.6 — FIT RÉEL TÉLÉPHONE
+   ========================================================= */
+html{
+  width:100%;
+  max-width:100%;
+  min-height:100%;
+  overflow-x:hidden;
+  background:#07111f;
+}
+body{
+  width:100%;
+  max-width:100%;
+  min-height:100dvh;
+  overflow-x:hidden;
+  overscroll-behavior-x:none;
+  -webkit-text-size-adjust:100%;
+}
+.app{
+  width:100%;
+  max-width:100%;
+  min-height:100dvh;
+  margin:0;
+  padding:
+    max(7px,env(safe-area-inset-top))
+    max(8px,env(safe-area-inset-right))
+    max(82px,calc(env(safe-area-inset-bottom) + 72px))
+    max(8px,env(safe-area-inset-left));
+  overflow-x:hidden;
+}
+.screen,
+.card,
+.game-sticky,
+.tabs,
+.discussion-panel,
+.chat-composer{
+  max-width:100%;
+}
+input,select,button{
+  max-width:100%;
+}
+.game-top{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  align-items:center;
+  gap:5px;
+}
+.game-room-meta{
+  min-width:0;
+  overflow:hidden;
+}
+.game-room-meta .eyebrow,
+.game-round{
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+.game-top-actions{
+  display:flex;
+  gap:4px;
+  align-items:center;
+}
+.propose-vote,
+.leave-game-btn{
+  flex:0 0 auto;
+  min-width:0;
+  white-space:nowrap;
+}
+.propose-vote{
+  padding:8px 8px;
+}
+.leave-game-btn{
+  padding:8px 7px;
+}
+.players-horizontal,
+.players{
+  max-width:100%;
+  scrollbar-width:none;
+}
+.players-horizontal::-webkit-scrollbar,
+.players::-webkit-scrollbar{
+  display:none;
+}
+.room-code{
+  max-width:100%;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+.chat-list{
+  height:calc(100dvh - 295px);
+  min-height:180px;
+}
+.chat-composer{
+  left:0;
+  transform:none;
+  width:100%;
+  max-width:100%;
+  padding-left:max(8px,env(safe-area-inset-left));
+  padding-right:max(8px,env(safe-area-inset-right));
+}
+.modal-backdrop{
+  padding:
+    max(10px,env(safe-area-inset-top))
+    max(10px,env(safe-area-inset-right))
+    max(10px,env(safe-area-inset-bottom))
+    max(10px,env(safe-area-inset-left));
+}
+.modal{
+  width:100%;
+  max-width:360px;
+}
+@media(max-width:360px){
+  .app{padding-left:7px;padding-right:7px}
+  .brand h1{font-size:16px}
+  .propose-vote{font-size:7.8px;padding:8px 6px}
+  .leave-game-btn{font-size:7.8px;padding:8px 6px}
+  .game-top-actions{gap:3px}
+  .character-mini{grid-template-columns:auto minmax(0,1fr) auto}
+}
+@media(min-width:600px){
+  .app{
+    width:390px;
+    max-width:390px;
+    margin:0 auto;
+  }
+}

@@ -162,44 +162,137 @@ async function initFirebase(){
     $("#fatal-config").innerHTML=`<strong>Firebase ne charge pas.</strong><span>${esc(e.message)}</span>`;
   }
 }
-function ensureUser(){if(!currentUser){toast("Connexion en cours…");return false}return true}
+async function ensureUserReady(){
+  if(currentUser && fb && db)return currentUser;
+
+  toast("Connexion…","Initialisation de Firebase.");
+
+  // Laisse le chargement dynamique de Firebase / Auth finir sur mobile lent.
+  for(let i=0;i<40;i++){
+    if(currentUser && fb && db)return currentUser;
+    await new Promise(r=>setTimeout(r,250));
+  }
+
+  // Dernière tentative explicite d'authentification anonyme.
+  if(auth && fb?.authMod){
+    try{
+      const cred=await fb.authMod.signInAnonymously(auth);
+      currentUser=cred.user;
+      if(currentUser && db)return currentUser;
+    }catch(e){
+      console.error("Anonymous auth failed",e);
+      throw new Error("Connexion Firebase impossible : "+(e.code||e.message||"auth"));
+    }
+  }
+
+  throw new Error("Firebase n'est pas encore prêt. Vérifie Internet puis réessaie.");
+}
 
 async function createRoom({solo=false}={}){
-  if(!ensureUser())return;
-  const name=safeName($("#home-name").value);localStorage.setItem("imposteur_name",name);
-  const {doc,getDoc,setDoc,serverTimestamp}=fb.fsMod;
-  let code;
-  for(let i=0;i<12;i++){
-    const c=randomCode();if(!(await getDoc(doc(db,"rooms",c))).exists()){code=c;break}
+  const btn=solo?$("#solo-room-btn"):$("#create-room-btn");
+  const oldText=btn?.textContent||"";
+  if(btn){
+    btn.disabled=true;
+    btn.textContent=solo?"Préparation des IA…":"Création…";
   }
-  if(!code)throw new Error("Impossible de générer la salle.");
 
-  await setDoc(doc(db,"rooms",code),{
-    hostUid:currentUser.uid,status:"lobby",gameNo:0,hintRound:0,turnIndex:0,order:[],
-    hiddenHints:false,reconsiderSeconds:15,createdAt:serverTimestamp()
-  });
-  await setDoc(doc(db,"rooms",code,"players",currentUser.uid),{
-    name,type:"human",score:0,joinedAt:serverTimestamp()
-  });
-  await enterRoom(code);
-  if(solo){
-    await fillBots(4);
-    toast("Mode solo prêt","4 IA ont rejoint ta salle.");
+  try{
+    await ensureUserReady();
+
+    const name=safeName($("#home-name").value);
+    localStorage.setItem("imposteur_name",name);
+
+    const {doc,getDoc,setDoc,serverTimestamp}=fb.fsMod;
+    let code=null;
+
+    for(let i=0;i<12;i++){
+      const c=randomCode();
+      const candidate=await getDoc(doc(db,"rooms",c));
+      if(!candidate.exists()){
+        code=c;
+        break;
+      }
+    }
+    if(!code)throw new Error("Impossible de générer un code de salle.");
+
+    await setDoc(doc(db,"rooms",code),{
+      hostUid:currentUser.uid,
+      status:"lobby",
+      gameNo:0,
+      hintRound:0,
+      turnIndex:0,
+      order:[],
+      hiddenHints:false,
+      reconsiderSeconds:15,
+      createdAt:serverTimestamp()
+    });
+
+    await setDoc(doc(db,"rooms",code,"players",currentUser.uid),{
+      name,
+      type:"human",
+      score:0,
+      joinedAt:serverTimestamp()
+    });
+
+    // Affiche immédiatement le Lobby, puis branche les listeners.
+    currentRoom=code;
+    $("#room-code").textContent=code;
+    $("#game-room-code").textContent=code;
+    show("lobby");
+
+    await enterRoom(code);
+
+    if(solo){
+      await fillBots(4);
+      toast("Mode solo prêt","4 IA ont rejoint.");
+    }else{
+      toast("Salle créée",`Code : ${code}`);
+    }
+  }finally{
+    if(btn){
+      btn.disabled=false;
+      btn.textContent=oldText;
+    }
   }
 }
 
 async function joinRoom(){
-  if(!ensureUser())return;
-  const code=$("#join-code").value.trim().toUpperCase();
-  if(code.length!==5){toast("Code invalide","Le code contient 5 caractères.");return}
-  const name=safeName($("#home-name").value);localStorage.setItem("imposteur_name",name);
-  const {doc,getDoc,setDoc,serverTimestamp}=fb.fsMod;
-  const room=await getDoc(doc(db,"rooms",code));
-  if(!room.exists()){toast("Salle introuvable");return}
-  await setDoc(doc(db,"rooms",code,"players",currentUser.uid),{
-    name,type:"human",score:0,joinedAt:serverTimestamp()
-  },{merge:true});
-  await enterRoom(code);
+  const btn=$("#join-room-btn");
+  const oldText=btn?.textContent||"";
+  if(btn){
+    btn.disabled=true;
+    btn.textContent="Connexion…";
+  }
+
+  try{
+    await ensureUserReady();
+
+    const code=$("#join-code").value.trim().toUpperCase();
+    if(code.length!==5)throw new Error("Le code doit contenir 5 caractères.");
+
+    const name=safeName($("#home-name").value);
+    localStorage.setItem("imposteur_name",name);
+
+    const {doc,getDoc,setDoc,serverTimestamp}=fb.fsMod;
+    const room=await getDoc(doc(db,"rooms",code));
+    if(!room.exists())throw new Error("Salle introuvable.");
+
+    await setDoc(doc(db,"rooms",code,"players",currentUser.uid),{
+      name,
+      type:"human",
+      score:0,
+      joinedAt:serverTimestamp()
+    },{merge:true});
+
+    show("lobby");
+    await enterRoom(code);
+    toast("Salle rejointe",code);
+  }finally{
+    if(btn){
+      btn.disabled=false;
+      btn.textContent=oldText;
+    }
+  }
 }
 
 async function resumeRoom(code){
@@ -1027,9 +1120,9 @@ async function installApp(){
 }
 
 // Events
-$("#create-room-btn").addEventListener("click",()=>createRoom().catch(e=>toast("Erreur",e.message)));
-$("#solo-room-btn").addEventListener("click",()=>createRoom({solo:true}).catch(e=>toast("Erreur",e.message)));
-$("#join-room-btn").addEventListener("click",()=>joinRoom().catch(e=>toast("Erreur",e.message)));
+$("#create-room-btn").addEventListener("click",()=>createRoom().catch(e=>{console.error(e);toast("Création impossible",e.message)}));
+$("#solo-room-btn").addEventListener("click",()=>createRoom({solo:true}).catch(e=>{console.error(e);toast("Mode solo impossible",e.message)}));
+$("#join-room-btn").addEventListener("click",()=>joinRoom().catch(e=>{console.error(e);toast("Connexion impossible",e.message)}));
 $("#copy-code-btn").addEventListener("click",async()=>{await navigator.clipboard.writeText(currentRoom);toast("Code copié",currentRoom)});
 $("#share-room-btn").addEventListener("click",async()=>{const text=`Rejoins ma salle Anime Imposteur : ${currentRoom}`;if(navigator.share)await navigator.share({title:"Anime Imposteur",text,url:location.href});else{await navigator.clipboard.writeText(text+" "+location.href);toast("Invitation copiée")}});
 $("#install-now-btn").addEventListener("click",installApp);
