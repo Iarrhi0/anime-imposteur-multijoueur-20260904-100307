@@ -12,7 +12,7 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icons/icon-192.png">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
-  <link rel="stylesheet" href="style.css?v=6.7">
+  <link rel="stylesheet" href="style.css?v=6.8">
 </head>
 <body>
   <div id="toast-layer" class="toast-layer"></div>
@@ -198,27 +198,50 @@
         <div id="game-players" class="players-horizontal"></div>
       </div>
 
-      <div class="tabs">
-        <button class="tab active" data-game-tab="hints">🧩 Indices <span id="hints-badge" class="badge hidden">0</span></button>
-        <button class="tab" data-game-tab="chat">💬 Discussion <span id="chat-badge" class="badge hidden">0</span></button>
-      </div>
+      <nav class="mobile-game-nav" aria-label="Navigation de partie">
+        <button class="mobile-nav-btn active" data-game-tab="hints">
+          <span class="mobile-nav-icon">🧩</span>
+          <span>Indices</span>
+          <span id="hints-badge" class="badge hidden">0</span>
+        </button>
+        <button class="mobile-nav-btn" data-game-tab="chat">
+          <span class="mobile-nav-icon">💬</span>
+          <span>Messages</span>
+          <span id="chat-badge" class="badge hidden">0</span>
+        </button>
+      </nav>
 
-      <section id="game-hints-panel">
-        <div class="card">
-          <div class="section-title">
-            <div><h3>Tour d’indices</h3><p id="turn-help">Un mot par joueur</p></div>
-            <button id="next-hint-round-btn" class="mini-btn hidden">+ Manche</button>
+      <section id="game-hints-panel" class="mobile-panel">
+        <div id="turn-box" class="turn-banner">
+          <div class="turn-avatar">…</div>
+          <div class="turn-copy">
+            <span class="turn-kicker">TOUR D’INDICE</span>
+            <strong>Préparation…</strong>
+            <small>Synchronisation des joueurs</small>
+          </div>
+        </div>
+
+        <div class="hint-entry-panel">
+          <div class="hint-entry-head">
+            <div>
+              <strong>Ton indice</strong>
+              <small>1 mot uniquement</small>
+            </div>
+            <button id="next-hint-round-btn" class="new-round-btn hidden">+ Manche</button>
           </div>
 
-          <div id="turn-box" class="turn-box"></div>
-
-          <div id="hint-composer" class="composer hidden">
-            <input id="hint-input" maxlength="22" placeholder="Un seul mot…">
-            <button id="send-hint-btn" class="send-btn">Envoyer</button>
+          <div id="hint-composer" class="hint-composer">
+            <input id="hint-input" maxlength="22" autocomplete="off"
+                   enterkeyhint="send" placeholder="Prépare ton indice…">
+            <button id="send-hint-btn" class="hint-send-btn" disabled>➤</button>
           </div>
 
-          <div class="scroll-head">
-            <span>Historique</span>
+          <div id="hint-wait-note" class="hint-wait-note">Tu peux préparer ton mot maintenant.</div>
+        </div>
+
+        <div class="history-panel">
+          <div class="history-head">
+            <strong>Indices donnés</strong>
             <span id="hint-count">0</span>
           </div>
           <div class="hints-scroll">
@@ -227,16 +250,23 @@
         </div>
       </section>
 
-      <section id="game-chat-panel" class="hidden discussion-panel">
-        <div class="card discussion-card">
-          <div class="section-title">
-            <div><h3>Discussion libre</h3><p>Explique, accuse, défends-toi ou bluffe.</p></div>
+      <section id="game-chat-panel" class="hidden discussion-panel mobile-panel">
+        <div class="message-header">
+          <div>
+            <strong>💬 Messages</strong>
+            <small>Parlez librement sans révéler le personnage.</small>
           </div>
-          <div id="chat-list" class="chat-list"></div>
         </div>
+
+        <div id="chat-list" class="chat-list"></div>
+
         <div id="chat-composer" class="chat-composer">
-          <input id="chat-input" maxlength="300" placeholder="Écrire un message…">
-          <button id="send-chat-btn" class="send-icon-btn" aria-label="Envoyer">➤</button>
+          <div class="chat-input-wrap">
+            <span class="chat-input-icon">💬</span>
+            <input id="chat-input" maxlength="300" enterkeyhint="send"
+                   placeholder="Écris un message…">
+          </div>
+          <button id="send-chat-btn" class="send-icon-btn" aria-label="Envoyer le message">➤</button>
         </div>
       </section>
 
@@ -345,6 +375,6 @@
     </div>
   </main>
 
-  <script type="module" src="app.js?v=6.7"></script>
+  <script type="module" src="app.js?v=6.8"></script>
 </body>
 </html>

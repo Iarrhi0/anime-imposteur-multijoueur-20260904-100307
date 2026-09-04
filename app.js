@@ -1,9 +1,9 @@
 import { firebaseConfig } from "./firebase-config.js";
-import { animeDB, chooseIntelligentPair, getAiStats } from "./ai-engine.js?v=6.7";
+import { animeDB, chooseIntelligentPair, getAiStats } from "./ai-engine.js?v=6.8";
 import {
   chooseBotHint, chooseBotVote, botVoteApproval, buildBotDiscussion,
   shouldBotReply, botReplyDelay
-} from "./bot-engine.js?v=6.7";
+} from "./bot-engine.js?v=6.8";
 
 const $=s=>document.querySelector(s);
 const $$=s=>[...document.querySelectorAll(s)];
@@ -565,37 +565,74 @@ function renderTurn(){
   const complete=currentRoomData.turnIndex>=order.length;
   const input=$("#hint-input");
   const send=$("#send-hint-btn");
+  const note=$("#hint-wait-note");
+  const box=$("#turn-box");
 
-  // The field is ALWAYS visible. When it isn't your turn it is disabled,
-  // so the player understands why they cannot type.
+  // IMPORTANT V6.8:
+  // The player may ALWAYS type/draft their clue.
+  input.disabled=false;
   $("#hint-composer").classList.remove("hidden");
   $("#next-hint-round-btn").classList.toggle("hidden",!(isHost&&complete));
 
   if(complete){
-    $("#turn-box").innerHTML=`<strong>Tout le monde a joué.</strong><small>Discutez, proposez un vote ou lancez une nouvelle manche.</small>`;
-    input.disabled=true;
+    box.className="turn-banner turn-complete";
+    box.innerHTML=`
+      <div class="turn-avatar">✓</div>
+      <div class="turn-copy">
+        <span class="turn-kicker">MANCHE TERMINÉE</span>
+        <strong>Tout le monde a donné son indice</strong>
+        <small>Discutez ou proposez un vote.</small>
+      </div>`;
     send.disabled=true;
-    input.placeholder="Manche terminée";
+    send.classList.remove("ready");
+    input.placeholder="Prépare ton prochain indice…";
+    note.textContent=isHost
+      ?"Tu peux lancer une nouvelle manche."
+      :"Tu peux déjà préparer ton prochain mot.";
     return;
   }
 
   if(!p){
-    $("#turn-box").innerHTML=`<strong>Préparation du tour…</strong><small>Synchronisation des joueurs.</small>`;
-    input.disabled=true;
+    box.className="turn-banner turn-waiting";
+    box.innerHTML=`
+      <div class="turn-avatar">…</div>
+      <div class="turn-copy">
+        <span class="turn-kicker">TOUR D’INDICE</span>
+        <strong>Préparation…</strong>
+        <small>Synchronisation des joueurs</small>
+      </div>`;
     send.disabled=true;
-    input.placeholder="Préparation…";
+    send.classList.remove("ready");
+    input.placeholder="Prépare ton indice…";
+    note.textContent="Tu peux déjà écrire ton mot.";
     return;
   }
 
   const mine=p.id===currentUser.uid;
-  $("#turn-box").innerHTML=`<small>C’EST AU TOUR DE</small><strong>${esc(p.name)}</strong><small>${mine?"Écris un seul mot.":p.bot?"L’IA réfléchit…":"En attente de son indice…"}</small>`;
+  const avatar=p.bot?"🤖":esc((p.name||"?").charAt(0).toUpperCase());
 
-  input.disabled=!mine;
+  box.className=`turn-banner ${mine?"turn-mine":p.bot?"turn-bot":"turn-other"}`;
+  box.innerHTML=`
+    <div class="turn-avatar">${avatar}</div>
+    <div class="turn-copy">
+      <span class="turn-kicker">${mine?"À TON TOUR":"TOUR D’INDICE"}</span>
+      <strong>${mine?"Donne ton indice":`Tour de ${esc(p.name)}${p.bot?" 🤖":""}`}</strong>
+      <small>${mine?"Un seul mot puis envoie.":p.bot?"L’IA choisit son mot…":"En attente de son indice…"}</small>
+    </div>`;
+
   send.disabled=!mine;
-  input.placeholder=mine?"Ton indice (1 mot)…":`${p.name} joue…`;
+  send.classList.toggle("ready",mine);
+
+  // Never block typing. Drafting before the turn is allowed.
+  input.placeholder=mine?"Écris ton indice…":"Prépare ton indice à l’avance…";
+  note.textContent=mine
+    ?"Ton tour : appuie sur ➤ pour envoyer."
+    :`Tu peux écrire maintenant. Envoi disponible au tour de ${participantById(currentUser.uid)?.name||"toi"}.`;
 
   if(mine){
-    setTimeout(()=>input.focus({preventScroll:true}),80);
+    setTimeout(()=>{
+      try{input.focus({preventScroll:true})}catch{}
+    },100);
   }
 }
 
@@ -795,13 +832,20 @@ async function nextHintRound(){
 async function sendHint(){
   if(currentRoomData.status!=="playing")return;
   const order=orderedParticipants(),p=order[currentRoomData.turnIndex];
-  if(p?.id!==currentUser.uid){toast("Ce n’est pas ton tour");return}
+
+  if(p?.id!==currentUser.uid){
+    toast(
+      "Pas encore ton tour",
+      p ? `C’est à ${p.name} de donner son indice.` : "Le tour se prépare."
+    );
+    return;
+  }
+
   const word=$("#hint-input").value.trim();
   if(!word||/\s/.test(word)){toast("Un seul mot est autorisé");return}
   const already=currentGameHints().some(h=>h.playerId===currentUser.uid&&h.round===currentRoomData.hintRound);
   if(already){toast("Indice déjà envoyé");return}
   if(currentGameHints().some(h=>h.word?.toLowerCase()===word.toLowerCase())){toast("Ce mot a déjà été utilisé");return}
-  $("#hint-input").value="";
   const {doc,setDoc,serverTimestamp}=fb.fsMod;
   const id=`g${currentRoomData.gameNo}_r${currentRoomData.hintRound}_${currentUser.uid}`;
   await setDoc(doc(db,"rooms",currentRoom,"hints",id),{
@@ -809,6 +853,7 @@ async function sendHint(){
     playerName:participantById(currentUser.uid)?.name||"Joueur",word,
     revealed:!currentRoomData.hiddenHints,orderIndex:currentRoomData.turnIndex,createdAt:serverTimestamp()
   });
+  $("#hint-input").value="";
 }
 
 async function sendMessage(text,post=false,playerId=currentUser.uid,playerName=null){
