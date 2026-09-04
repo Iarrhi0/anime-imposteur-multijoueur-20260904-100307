@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#090b14">
+  <title>Anime Imposteur</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="app">
+    <header class="brand">
+      <div class="logo">🎭</div>
+      <div>
+        <h1>Anime Imposteur</h1>
+        <p>Lobby multijoueur</p>
+      </div>
+      <div id="connection-dot" class="connection-dot" title="Connexion"></div>
+    </header>
+
+    <div id="fatal-config" class="fatal hidden">
+      <strong>Firebase n’est pas encore configuré.</strong>
+      <span>Lance d’abord <b>1_SETUP_FIREBASE.bat</b>, puis publie avec <b>2_PUBLISH_GITHUB.bat</b>.</span>
+    </div>
+
+    <!-- HOME -->
+    <section id="screen-home" class="screen active">
+      <div class="hero card">
+        <span class="eyebrow">MULTIJOUEUR</span>
+        <h2>Un salon. Plusieurs téléphones.</h2>
+        <p>Crée un salon ou rejoins tes amis avec un code. Un seul joueur recevra le personnage différent.</p>
+      </div>
+
+      <div class="card">
+        <label class="field">
+          <span>Ton pseudo</span>
+          <input id="home-name" maxlength="20" placeholder="Kevin" autocomplete="nickname">
+        </label>
+        <button class="btn primary" id="create-room-btn">Créer un salon</button>
+      </div>
+
+      <div class="divider"><span>OU</span></div>
+
+      <div class="card">
+        <label class="field">
+          <span>Code du salon</span>
+          <input id="join-code" maxlength="5" placeholder="AK7P" class="code-input" autocomplete="off">
+        </label>
+        <button class="btn secondary" id="join-room-btn">Rejoindre le salon</button>
+      </div>
+    </section>
+
+    <!-- LOBBY -->
+    <section id="screen-lobby" class="screen">
+      <div class="room-head card">
+        <span class="eyebrow">CODE DU SALON</span>
+        <div id="room-code" class="room-code">AK7P</div>
+        <button id="copy-code-btn" class="mini-btn">Copier le code</button>
+      </div>
+
+      <div class="card">
+        <div class="section-title">
+          <div>
+            <h3>Joueurs</h3>
+            <p id="player-count">0 joueur</p>
+          </div>
+          <span id="my-role-pill" class="pill">Joueur</span>
+        </div>
+        <div id="players-list" class="stack"></div>
+      </div>
+
+      <div id="host-panel" class="hidden">
+        <button class="btn bot-btn" id="add-bot-btn">🤖 Ajouter une IA locale</button>
+
+        <div class="card">
+          <div class="section-title">
+            <div>
+              <h3>Univers</h3>
+              <p>Réglages de la manche</p>
+            </div>
+          </div>
+
+          <div class="segmented">
+            <button class="segment active" data-mode="auto">🤖 Auto</button>
+            <button class="segment" data-mode="manual">🎯 Manuel</button>
+          </div>
+
+          <label class="check-row">
+            <input type="checkbox" id="mix-anime" checked>
+            <span>
+              <strong>Autoriser le mix d’animes</strong>
+              <small>Kakashi vs Gojo, Naruto vs Luffy…</small>
+            </span>
+          </label>
+
+          <div id="manual-anime-panel" class="hidden">
+            <p class="helper">Décoche les univers que vous ne connaissez pas.</p>
+            <div id="anime-grid" class="anime-grid"></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="section-title">
+            <div>
+              <h3>Difficulté</h3>
+              <p>Niveau de proximité du duo</p>
+            </div>
+          </div>
+          <div class="segmented three">
+            <button class="segment" data-difficulty="easy">Facile</button>
+            <button class="segment active" data-difficulty="normal">Normal</button>
+            <button class="segment" data-difficulty="hard">Difficile</button>
+          </div>
+        </div>
+
+        <button class="btn primary" id="start-game-btn">Commencer la partie</button>
+      </div>
+
+      <div id="guest-wait" class="card waiting hidden">
+        <div class="loader"></div>
+        <h3>En attente de l’hôte</h3>
+        <p>L’hôte lancera la partie quand tout le monde sera prêt.</p>
+      </div>
+
+      <button class="btn danger-ghost" id="leave-room-btn">Quitter le salon</button>
+    </section>
+
+    <!-- SECRET -->
+    <section id="screen-secret" class="screen">
+      <div class="card secret-top">
+        <span class="eyebrow">PARTIE EN COURS</span>
+        <h2 id="secret-player-name">Joueur</h2>
+        <p>Ton personnage est secret.</p>
+      </div>
+
+      <div class="character-card">
+        <div id="character-question" class="question">?</div>
+        <div id="character-content" class="hidden">
+          <div id="character-name" class="character-name">Naruto</div>
+          <div id="character-anime" class="character-anime">Naruto</div>
+        </div>
+      </div>
+
+      <button id="reveal-character-btn" class="btn primary">👁 Voir mon personnage</button>
+      <button id="hide-character-btn" class="btn secondary hidden">🙈 Cacher</button>
+
+      <div class="notice">
+        <strong>Le jeu ne dit jamais si tu es l’imposteur.</strong>
+        <span>Compare les indices donnés par les autres pour le découvrir.</span>
+      </div>
+
+      <div id="host-game-controls" class="hidden">
+        <button id="back-lobby-btn" class="btn secondary">Terminer la manche</button>
+      </div>
+    </section>
+
+    <!-- BOT MODAL -->
+    <div id="bot-modal" class="modal-backdrop hidden">
+      <div class="modal">
+        <div class="section-title">
+          <div>
+            <h3>Ajouter une IA locale</h3>
+            <p>Participant simulé</p>
+          </div>
+          <button id="close-bot-modal" class="x-btn">×</button>
+        </div>
+        <div id="bot-options" class="stack"></div>
+      </div>
+    </div>
+
+    <div id="toast" class="toast hidden"></div>
+  </main>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>

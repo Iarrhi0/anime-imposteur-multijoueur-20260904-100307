@@ -1,0 +1,5 @@
+1. Lance 1_SETUP_FIREBASE_FIX_V4.bat
+2. Le script reprend le meme projet anime-imposteur-689187.
+3. Firestore et l'app Web existent deja : il va les detecter.
+4. Le firebaseConfig JSON brut est maintenant correctement pris en charge.
+5. Quand tu vois FIREBASE PRET, lance 2_PUBLISH_GITHUB.bat.

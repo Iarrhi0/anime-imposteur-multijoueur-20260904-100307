@@ -1,0 +1,55 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function roomExists(roomId) {
+      return exists(/databases/$(database)/documents/rooms/$(roomId));
+    }
+
+    function isHost(roomId) {
+      return signedIn()
+        && roomExists(roomId)
+        && get(/databases/$(database)/documents/rooms/$(roomId)).data.hostUid == request.auth.uid;
+    }
+
+    match /rooms/{roomId} {
+      allow read: if signedIn();
+
+      allow create: if signedIn()
+        && request.resource.data.hostUid == request.auth.uid;
+
+      allow update, delete: if isHost(roomId);
+
+      match /players/{playerId} {
+        allow read: if signedIn() && roomExists(roomId);
+
+        allow create: if signedIn()
+          && roomExists(roomId)
+          && request.auth.uid == playerId;
+
+        allow update, delete: if signedIn()
+          && roomExists(roomId)
+          && (request.auth.uid == playerId || isHost(roomId));
+      }
+
+      match /bots/{botId} {
+        allow read: if signedIn() && roomExists(roomId);
+        allow write: if isHost(roomId);
+      }
+
+      match /assignments/{playerId} {
+        allow read: if signedIn() && request.auth.uid == playerId;
+        allow write: if isHost(roomId);
+      }
+
+      match /botAssignments/{botId} {
+        allow read, write: if isHost(roomId);
+      }
+    }
+  }
+}

@@ -1,0 +1,4 @@
+1. Lance 1_SETUP_FIREBASE_FIX_V3.bat
+2. Ne touche plus a l'API Firestore : elle est deja activee.
+3. Le script reessaie automatiquement jusqu'a 6 minutes.
+4. Quand tu vois FIREBASE PRET, lance 2_PUBLISH_GITHUB.bat.
