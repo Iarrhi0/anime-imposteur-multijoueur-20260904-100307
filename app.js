@@ -1,9 +1,9 @@
 import { firebaseConfig } from "./firebase-config.js";
-import { animeDB, chooseIntelligentPair, getAiStats } from "./ai-engine.js?v=8.0";
+import { animeDB, chooseIntelligentPair, getAiStats } from "./ai-engine.js?v=8.1";
 import {
   chooseAdaptiveBotHint, chooseBotVote, botVoteApproval,
   buildBotDiscussion, shouldBotReply, botReplyDelay, resetBotMemory
-} from "./bot-engine.js?v=8.0";
+} from "./bot-engine.js?v=8.1";
 
 const $=s=>document.querySelector(s);
 const $$=s=>[...document.querySelectorAll(s)];
@@ -263,6 +263,13 @@ async function enterRoom(code){
     if((currentRoomData.voteRound||1)>(prev?.voteRound||1)&&currentRoomData.status==="voting")toast("Égalité","Nouveau vote entre les ex æquo.");
 
     scheduleRender();scheduleHostTick();armVoteTimer();repairCorruptedRoster().catch(()=>{});
+    if(
+      isHost &&
+      currentRoomData.status==="voting" &&
+      currentRoomData.voteStage==="confirming"
+    ){
+      guaranteeBotConfirmations().catch(console.error);
+    }
   }));
 
   roomUnsubs.push(onSnapshot(collection(db,"rooms",code,"players"),snap=>{
@@ -315,7 +322,17 @@ function subscribeGameData(gameNo){
     voteApprovals=snap.docs.map(d=>({id:d.id,...d.data()}));collectionReady.approvals=true;scheduleRender();scheduleHostTick();
   }));
   gameUnsubs.push(onSnapshot(query(collection(db,"rooms",currentRoom,"voteStatus"),where("gameNo","==",gameNo)),snap=>{
-    voteStatuses=snap.docs.map(d=>({id:d.id,...d.data()}));collectionReady.voteStatus=true;scheduleRender();scheduleHostTick();
+    voteStatuses=snap.docs.map(d=>({id:d.id,...d.data()}));
+    collectionReady.voteStatus=true;
+    scheduleRender();
+    scheduleHostTick();
+    if(
+      isHost &&
+      currentRoomData?.status==="voting" &&
+      currentRoomData?.voteStage==="confirming"
+    ){
+      guaranteeBotConfirmations().catch(console.error);
+    }
   }));
 }
 
@@ -471,7 +488,14 @@ async function repairCorruptedRoster(){
     patch.voteCandidates=[...order];
   }
 
-  if(recoverable.length){
+  const currentActive=currentRoomData.activeIds||[];
+  if(
+    recoverable.length &&
+    (
+      currentActive.length!==recoverable.length ||
+      recoverable.some(id=>!currentActive.includes(id))
+    )
+  ){
     patch.activeIds=[...recoverable];
   }
 
@@ -480,7 +504,7 @@ async function repairCorruptedRoster(){
       fb.fsMod.doc(db,"rooms",currentRoom),
       patch
     );
-    toast("Vote réparé","Roster complet restauré.");
+    // V8.1: réparation silencieuse pour éviter les toasts en boucle.
   }
 }
 
@@ -735,6 +759,64 @@ async function ensureBotAssignment(botId){
   // l'IA doit quand même prendre une décision à partir des indices/messages.
   // Elle ne reçoit JAMAIS impostorId.
   return {name:"Personnage inconnu"};
+}
+
+async function guaranteeBotConfirmations(){
+  if(
+    !isHost ||
+    currentRoomData?.status!=="voting" ||
+    currentRoomData?.voteStage!=="confirming"
+  )return;
+
+  const voters=voteVoterIds();
+  const statusMap=voteStatusMap();
+
+  for(const b of bots.filter(x=>voters.includes(x.id))){
+    if(statusMap.get(b.id)?.confirmed || botConfirmThinking.has(b.id))continue;
+
+    botConfirmThinking.add(b.id);
+    try{
+      const id=`g${currentRoomData.gameNo}_v${currentVoteRound()}_${b.id}`;
+      const voteRef=fb.fsMod.doc(db,"rooms",currentRoom,"votes",id);
+      const statusRef=fb.fsMod.doc(db,"rooms",currentRoom,"voteStatus",id);
+      const voteSnap=await fb.fsMod.getDoc(voteRef);
+
+      if(!voteSnap.exists()){
+        await fb.fsMod.updateDoc(
+          fb.fsMod.doc(db,"rooms",currentRoom),
+          {voteStage:"collecting",reconsiderEndsAt:null}
+        );
+        return;
+      }
+
+      await Promise.all([
+        fb.fsMod.setDoc(
+          voteRef,
+          {confirmed:true,updatedMs:now()},
+          {merge:true}
+        ),
+        fb.fsMod.setDoc(
+          statusRef,
+          {
+            gameNo:currentRoomData.gameNo,
+            voteRound:currentVoteRound(),
+            playerId:b.id,
+            playerName:b.name,
+            submitted:true,
+            confirmed:true,
+            updatedMs:now()
+          },
+          {merge:true}
+        )
+      ]);
+    }catch(e){
+      console.error("bot confirmation",b.name,e);
+    }finally{
+      botConfirmThinking.delete(b.id);
+    }
+  }
+
+  scheduleHostTick(80);
 }
 
 async function hostProcessVoting(){
@@ -1390,4 +1472,4 @@ window.addEventListener("pagehide",markOffline);
 
 const savedName=localStorage.getItem("imposteur_name");if(savedName)$("#home-name").value=savedName;
 renderAnimeGrid();refreshAiStatus();armAppHistory();initFirebase();
-if("serviceWorker" in navigator)window.addEventListener("load",async()=>{try{const r=await navigator.serviceWorker.register("./service-worker.js?v=7.1");r.update().catch(()=>{})}catch{}});
+if("serviceWorker" in navigator)window.addEventListener("load",async()=>{try{const r=await navigator.serviceWorker.register("./service-worker.js?v=8.1");r.update().catch(()=>{})}catch{}});

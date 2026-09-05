@@ -1,11 +1,11 @@
-const CACHE="anime-imposteur-v8-0";
+const CACHE="anime-imposteur-v8-1";
 const SHELL=[
   "./",
   "./index.html",
-  "./style.css?v=8.0",
-  "./app.js?v=8.0",
-  "./ai-engine.js?v=8.0",
-  "./bot-engine.js?v=8.0",
+  "./style.css?v=8.1",
+  "./app.js?v=8.1",
+  "./ai-engine.js?v=8.1",
+  "./bot-engine.js?v=8.1",
   "./manifest.webmanifest",
   "./icons/icon-192.png",
   "./icons/icon-512.png"
