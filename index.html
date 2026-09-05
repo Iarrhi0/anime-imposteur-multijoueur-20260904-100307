@@ -12,7 +12,7 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icons/icon-192.png">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
-  <link rel="stylesheet" href="style.css?v=7.3">
+  <link rel="stylesheet" href="style.css?v=8.0">
 </head>
 <body>
   <div id="toast-layer" class="toast-layer"></div>
@@ -24,7 +24,7 @@
         <h1>Anime Imposteur</h1>
         <p>Multijoueur à distance • IA • installable</p>
       </div>
-      <div class="brand-build">v7.3</div><div id="connection-dot" class="connection-dot"></div>
+      <div class="brand-build">v8.0</div><div id="connection-dot" class="connection-dot"></div>
     </header>
 
     <div id="fatal-config" class="fatal hidden"></div>
@@ -62,6 +62,7 @@
     <!-- LOBBY -->
     <section id="screen-lobby" class="screen">
       <div class="room-head card">
+        <button id="lobby-back-btn" class="app-back-btn lobby-back-btn" aria-label="Retour">‹</button>
         <span class="eyebrow">CODE À PARTAGER</span>
         <div id="room-code" class="room-code">X7K2P</div>
         <div class="room-actions">
@@ -168,6 +169,7 @@
     <section id="screen-game" class="screen game-screen">
       <div class="game-sticky">
         <div class="game-top">
+          <button id="game-back-btn" class="app-back-btn game-back-btn" aria-label="Retour">‹</button>
           <div class="game-room-meta">
             <span class="eyebrow">SALLE <b id="game-room-code">X7K2P</b></span>
             <div id="game-round-label" class="game-round">Partie 1 • Tranche 1</div>
@@ -254,7 +256,7 @@
         <div class="message-header">
           <div>
             <strong>💬 Messages</strong>
-            <small>Parlez librement sans révéler le personnage.</small>
+            <small>Disponible pendant les indices, le vote et après le résultat.</small>
           </div>
         </div>
 
@@ -364,6 +366,6 @@
     </div>
   </main>
 
-  <script type="module" src="app.js?v=7.3"></script>
+  <script type="module" src="app.js?v=8.0"></script>
 </body>
 </html>

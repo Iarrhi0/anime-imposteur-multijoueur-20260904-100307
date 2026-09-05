@@ -1038,3 +1038,185 @@ button,.mobile-nav-btn,.vote-choice,.hint-send-btn,.send-icon-btn{touch-action:m
   border-radius:999px;
   padding:3px 7px;
 }
+
+
+/* =========================================================
+   V8.0 — MOBILE APP UX + RETOUR + CHAT FIXE
+   ========================================================= */
+:root{
+  --v8-nav-h:68px;
+  --v8-chat-h:68px;
+}
+
+html,body{
+  width:100%;
+  max-width:100%;
+  min-height:100%;
+  overflow-x:hidden;
+  overscroll-behavior:none;
+}
+
+body{
+  background:#020812;
+  -webkit-tap-highlight-color:transparent;
+  -webkit-text-size-adjust:100%;
+}
+
+.app{
+  min-height:100dvh;
+}
+
+.room-head{
+  position:relative;
+}
+
+.app-back-btn{
+  width:42px;
+  height:42px;
+  border-radius:13px;
+  border:1px solid #29435e;
+  background:#0d1b2a;
+  color:#fff;
+  display:grid;
+  place-items:center;
+  font-size:25px;
+  font-weight:900;
+  line-height:1;
+  touch-action:manipulation;
+}
+
+.lobby-back-btn{
+  position:absolute;
+  top:10px;
+  left:10px;
+  z-index:3;
+}
+
+.game-top{
+  grid-template-columns:42px minmax(0,1fr) auto!important;
+  gap:7px!important;
+}
+
+.game-back-btn{
+  align-self:center;
+}
+
+#game-chat-panel:not(.hidden){
+  display:flex!important;
+  flex-direction:column;
+  min-height:calc(100dvh - 210px);
+  padding-bottom:calc(var(--v8-chat-h) + 12px);
+}
+
+.chat-list{
+  flex:1 1 auto;
+  height:auto!important;
+  min-height:220px;
+  max-height:calc(100dvh - 285px);
+  overflow-y:auto;
+  -webkit-overflow-scrolling:touch;
+  overscroll-behavior:contain;
+}
+
+.chat-composer{
+  display:grid!important;
+  position:fixed!important;
+  left:50%!important;
+  transform:translateX(-50%)!important;
+  bottom:calc(var(--mobile-nav-h) + env(safe-area-inset-bottom))!important;
+  width:min(100%,430px)!important;
+  min-height:var(--v8-chat-h)!important;
+  padding:
+    8px
+    max(10px,env(safe-area-inset-right))
+    8px
+    max(10px,env(safe-area-inset-left))!important;
+  background:rgba(7,17,31,.995)!important;
+  border-top:1px solid #284158!important;
+  box-shadow:0 -12px 28px rgba(0,0,0,.28)!important;
+  z-index:95!important;
+}
+
+.chat-input-wrap{
+  min-height:50px!important;
+}
+
+.chat-input-wrap input{
+  font-size:16px!important; /* évite le zoom automatique sur iPhone */
+}
+
+.mobile-game-nav{
+  z-index:90!important;
+}
+
+#voting-panel,
+#result-panel,
+#game-hints-panel{
+  scroll-margin-bottom:90px;
+}
+
+.vote-status-list,
+.vote-grid{
+  content-visibility:auto;
+}
+
+.message,
+.hint-row,
+.game-player{
+  contain:content;
+}
+
+@media(max-width:599px){
+  .app{
+    width:100%!important;
+    max-width:none!important;
+    margin:0!important;
+    border:0!important;
+    padding-left:8px!important;
+    padding-right:8px!important;
+  }
+
+  .brand-copy p{
+    display:none;
+  }
+
+  .game-top-actions{
+    gap:4px!important;
+  }
+
+  .propose-vote{
+    min-height:42px!important;
+    padding:0 10px!important;
+    font-size:9px!important;
+    font-weight:1000!important;
+  }
+
+  .leave-game-btn{
+    min-height:42px!important;
+  }
+
+  .character-mini{
+    min-height:72px;
+  }
+
+  .players-card{
+    margin-bottom:7px;
+  }
+}
+
+@media(max-width:350px){
+  .game-top{
+    grid-template-columns:38px minmax(0,1fr) auto!important;
+  }
+  .app-back-btn{
+    width:38px;height:38px;
+  }
+  .propose-vote{
+    padding:0 7px!important;
+    font-size:8px!important;
+  }
+  .leave-game-btn{
+    padding:0 6px!important;
+    font-size:8px!important;
+  }
+}
