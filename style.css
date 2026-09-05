@@ -1027,3 +1027,14 @@ button,.mobile-nav-btn,.vote-choice,.hint-send-btn,.send-icon-btn{touch-action:m
   display:flex;
   align-items:center;
 }
+
+/* V7.3 */
+.brand-build{
+  margin-left:auto;
+  font-size:9px;
+  font-weight:900;
+  color:#8fa4ba;
+  border:1px solid #29435e;
+  border-radius:999px;
+  padding:3px 7px;
+}
