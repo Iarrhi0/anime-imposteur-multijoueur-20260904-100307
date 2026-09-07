@@ -1,25 +1,29 @@
-const CACHE="anime-imposteur-v8-4-1";
+const CACHE="anime-imposteur-v8-4-2";
 const SHELL=[
-  "./",
-  "./index.html",
-  "./style.css?v=8.4.1",
-  "./app.js?v=8.4.1",
-  "./ai-engine.js?v=8.4.1",
-  "./bot-engine.js?v=8.4.1",
+  "./style.css?v=8.4.2",
+  "./app.js?v=8.4.2",
+  "./ai-engine.js?v=8.4.2",
+  "./bot-engine.js?v=8.4.2",
   "./manifest.webmanifest",
   "./icons/icon-192.png",
   "./icons/icon-512.png"
 ];
 
 self.addEventListener("install",event=>{
-  event.waitUntil(caches.open(CACHE).then(c=>c.addAll(SHELL)));
+  event.waitUntil(
+    caches.open(CACHE).then(c=>c.addAll(SHELL))
+  );
   self.skipWaiting();
 });
 
 self.addEventListener("activate",event=>{
   event.waitUntil(
     caches.keys().then(keys=>
-      Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k)))
+      Promise.all(
+        keys
+          .filter(k=>k.startsWith("anime-imposteur-") && k!==CACHE)
+          .map(k=>caches.delete(k))
+      )
     )
   );
   self.clients.claim();
@@ -39,10 +43,18 @@ self.addEventListener("fetch",event=>{
 
   const same=u.origin===self.location.origin;
 
-  if(
-    event.request.mode==="navigate" ||
-    (same && ["script","style","document"].includes(event.request.destination))
-  ){
+  // HTML / navigation : toujours réseau d'abord.
+  // Ne pas conserver index.html en app-shell permanent.
+  if(event.request.mode==="navigate"){
+    event.respondWith(
+      fetch(event.request,{cache:"no-store"})
+        .catch(()=>caches.match("./"))
+    );
+    return;
+  }
+
+  // JS/CSS : réseau d'abord pour prendre la nouvelle version.
+  if(same && ["script","style"].includes(event.request.destination)){
     event.respondWith(
       fetch(event.request,{cache:"no-store"})
         .then(res=>{
@@ -50,7 +62,7 @@ self.addEventListener("fetch",event=>{
           caches.open(CACHE).then(c=>c.put(event.request,copy));
           return res;
         })
-        .catch(()=>caches.match(event.request).then(x=>x||caches.match("./index.html")))
+        .catch(()=>caches.match(event.request))
     );
     return;
   }

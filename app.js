@@ -1,9 +1,9 @@
 import { firebaseConfig } from "./firebase-config.js";
-import { animeDB, chooseIntelligentPair, getAiStats } from "./ai-engine.js?v=8.4.1";
+import { animeDB, chooseIntelligentPair, getAiStats } from "./ai-engine.js?v=8.4.2";
 import {
   chooseAdaptiveBotHint, chooseBotVote, botVoteApproval,
   buildBotDiscussion, shouldBotReply, botReplyDelay, resetBotMemory
-} from "./bot-engine.js?v=8.4.1";
+} from "./bot-engine.js?v=8.4.2";
 
 const $=s=>document.querySelector(s);
 const $$=s=>[...document.querySelectorAll(s)];
@@ -1688,4 +1688,24 @@ window.addEventListener("pagehide",markOffline);
 
 const savedName=localStorage.getItem("imposteur_name");if(savedName)$("#home-name").value=savedName;
 renderAnimeGrid();refreshAiStatus();armAppHistory();initFirebase();
-if("serviceWorker" in navigator)window.addEventListener("load",async()=>{try{const r=await navigator.serviceWorker.register("./service-worker.js?v=8.4.1");r.update().catch(()=>{})}catch{}});
+if("serviceWorker" in navigator){
+  window.addEventListener("load",async()=>{
+    try{
+      // V8.4.2 : supprime toute ancienne cache Anime Imposteur.
+      const keys=await caches.keys();
+      await Promise.all(
+        keys
+          .filter(k=>k.startsWith("anime-imposteur-") && k!=="anime-imposteur-v8-4-2")
+          .map(k=>caches.delete(k))
+      );
+
+      const reg=await navigator.serviceWorker.register(
+        "./service-worker.js?v=8.4.2",
+        {updateViaCache:"none"}
+      );
+      await reg.update().catch(()=>{});
+    }catch(e){
+      console.warn("SW update",e);
+    }
+  });
+}
