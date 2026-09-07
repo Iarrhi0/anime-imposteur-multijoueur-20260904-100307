@@ -1,9 +1,9 @@
 import { firebaseConfig } from "./firebase-config.js";
-import { animeDB, chooseIntelligentPair, getAiStats } from "./ai-engine.js?v=8.1";
+import { animeDB, chooseIntelligentPair, getAiStats } from "./ai-engine.js?v=8.2";
 import {
   chooseAdaptiveBotHint, chooseBotVote, botVoteApproval,
   buildBotDiscussion, shouldBotReply, botReplyDelay, resetBotMemory
-} from "./bot-engine.js?v=8.1";
+} from "./bot-engine.js?v=8.2";
 
 const $=s=>document.querySelector(s);
 const $$=s=>[...document.querySelectorAll(s)];
@@ -42,6 +42,8 @@ let lastHintIds=new Set(),lastMessageIds=new Set();
 let historyGuardReady=false;
 let botVoteThinking=new Set();
 let botConfirmThinking=new Set();
+let botVoteWatchdogTimer=null;
+let botVoteTimers=new Map();
 const characterImageCache=new Map();
 const localSettings={mode:"auto",difficulty:"hard"};
 
@@ -79,11 +81,19 @@ function scheduleRender(){
   requestAnimationFrame(()=>{renderQueued=false;renderAll()});
 }
 function cleanupTimers(){
-  [heartbeatTimer,hostLeaseTimer,hostClaimTimer].forEach(clearInterval);
+  [heartbeatTimer,hostLeaseTimer,hostClaimTimer,botVoteWatchdogTimer].forEach(clearInterval);
   [hostTickTimer,reconsiderClientTimer].forEach(clearTimeout);
-  heartbeatTimer=hostLeaseTimer=hostClaimTimer=hostTickTimer=reconsiderClientTimer=null;
+  heartbeatTimer=hostLeaseTimer=hostClaimTimer=hostTickTimer=reconsiderClientTimer=botVoteWatchdogTimer=null;
+
   for(const t of botTurnTimers.values())clearTimeout(t);
-  botTurnTimers.clear();botMessageQueue=[];botQueueBusy=false;
+  for(const t of botVoteTimers.values())clearTimeout(t);
+
+  botTurnTimers.clear();
+  botVoteTimers.clear();
+  botVoteThinking.clear();
+  botConfirmThinking.clear();
+  botMessageQueue=[];
+  botQueueBusy=false;
 }
 function cleanupListeners(){
   while(roomUnsubs.length){try{roomUnsubs.pop()()}catch{}}
@@ -243,8 +253,16 @@ async function enterRoom(code){
     const prev=currentRoomData;currentRoomData=snap.data();
     const wasHost=isHost;isHost=currentRoomData.hostUid===currentUser.uid;
 
-    if(isHost&&!wasHost){subscribeBotAssignments();startHostLease()}
-    if(!isHost&&wasHost){stopHostLease();unsubscribeBotAssignments()}
+    if(isHost&&!wasHost){
+      subscribeBotAssignments();
+      startHostLease();
+      startBotVoteWatchdog();
+    }
+    if(!isHost&&wasHost){
+      stopHostLease();
+      stopBotVoteWatchdog();
+      unsubscribeBotAssignments();
+    }
     if(!isHost)startHostClaimWatcher();
 
     if(currentRoomData.gameNo!==prev?.gameNo){
@@ -258,7 +276,10 @@ async function enterRoom(code){
       if($("#vote-choices"))$("#vote-choices").dataset.selectedId="";
       subscribeMyVote();
     }
-    if(prev?.status!==currentRoomData.status&&currentRoomData.status==="voting")toast("Vote accepté","Le vote commence.");
+    if(prev?.status!==currentRoomData.status&&currentRoomData.status==="voting"){
+      toast("Vote accepté","Le vote commence.");
+      if(isHost)startBotVoteWatchdog();
+    }
     if(prev?.status!==currentRoomData.status&&currentRoomData.status==="postvote")toast("Résultat","La discussion reste ouverte.");
     if((currentRoomData.voteRound||1)>(prev?.voteRound||1)&&currentRoomData.status==="voting")toast("Égalité","Nouveau vote entre les ex æquo.");
 
@@ -280,7 +301,15 @@ async function enterRoom(code){
   roomUnsubs.push(onSnapshot(collection(db,"rooms",code,"bots"),snap=>{
     bots=snap.docs.map(d=>({id:d.id,...d.data(),bot:true}));
     botsReady=true;
-    scheduleRender();scheduleHostTick();repairCorruptedRoster().catch(()=>{});
+    scheduleRender();
+    scheduleHostTick();
+    repairCorruptedRoster().catch(()=>{});
+
+    if(isHost && currentRoomData?.status==="voting"){
+      startBotVoteWatchdog();
+      guaranteeBotVotes().catch(console.error);
+      guaranteeBotConfirmations().catch(console.error);
+    }
   }));
   roomUnsubs.push(onSnapshot(doc(db,"rooms",code,"assignments",currentUser.uid),snap=>{
     assignment=snap.exists()?snap.data():null;renderCharacter();
@@ -326,12 +355,14 @@ function subscribeGameData(gameNo){
     collectionReady.voteStatus=true;
     scheduleRender();
     scheduleHostTick();
-    if(
-      isHost &&
-      currentRoomData?.status==="voting" &&
-      currentRoomData?.voteStage==="confirming"
-    ){
-      guaranteeBotConfirmations().catch(console.error);
+    if(isHost && currentRoomData?.status==="voting"){
+      startBotVoteWatchdog();
+
+      if(currentRoomData.voteStage==="collecting"){
+        guaranteeBotVotes().catch(console.error);
+      }else if(currentRoomData.voteStage==="confirming"){
+        guaranteeBotConfirmations().catch(console.error);
+      }
     }
   }));
 }
@@ -738,6 +769,185 @@ async function advanceVoteAfterTimer(){
   });
 }
 
+
+function rosterBotsForVote(){
+  const ids=new Set(voteVoterIds());
+
+  return (currentRoomData?.roster||[])
+    .filter(p=>p.bot && ids.has(p.id))
+    .map(p=>{
+      const live=bots.find(b=>b.id===p.id);
+      return {
+        ...p,
+        ...(live||{}),
+        bot:true,
+        difficulty:live?.difficulty||p.difficulty||"Normal"
+      };
+    });
+}
+
+function startBotVoteWatchdog(){
+  if(botVoteWatchdogTimer)return;
+
+  const tick=()=>{
+    if(!isHost || !currentRoomData)return;
+
+    if(currentRoomData.status==="voting"){
+      if(currentRoomData.voteStage==="collecting"){
+        guaranteeBotVotes().catch(console.error);
+      }else if(currentRoomData.voteStage==="confirming"){
+        guaranteeBotConfirmations().catch(console.error);
+      }
+
+      scheduleHostTick(20);
+    }
+  };
+
+  tick();
+  botVoteWatchdogTimer=setInterval(tick,900);
+}
+
+function stopBotVoteWatchdog(){
+  clearInterval(botVoteWatchdogTimer);
+  botVoteWatchdogTimer=null;
+
+  for(const t of botVoteTimers.values())clearTimeout(t);
+  botVoteTimers.clear();
+  botVoteThinking.clear();
+  botConfirmThinking.clear();
+}
+
+async function authoritativeVoteStatus(playerId){
+  if(!currentRoomData)return null;
+
+  const id=`g${currentRoomData.gameNo}_v${currentVoteRound()}_${playerId}`;
+  const snap=await fb.fsMod.getDoc(
+    fb.fsMod.doc(db,"rooms",currentRoom,"voteStatus",id)
+  );
+
+  return snap.exists()?snap.data():null;
+}
+
+async function guaranteeBotVotes(){
+  if(
+    !isHost ||
+    currentRoomData?.status!=="voting" ||
+    currentRoomData?.voteStage!=="collecting"
+  )return;
+
+  const voteRound=currentVoteRound();
+  const gameNo=currentRoomData.gameNo;
+  const botsToVote=rosterBotsForVote();
+
+  for(const b of botsToVote){
+    const key=`${gameNo}_${voteRound}_${b.id}`;
+
+    if(botVoteTimers.has(key) || botVoteThinking.has(b.id))continue;
+
+    const cached=voteStatusMap().get(b.id);
+    if(cached?.submitted)continue;
+
+    let realStatus=null;
+    try{
+      realStatus=await authoritativeVoteStatus(b.id);
+    }catch(e){
+      console.warn("vote status read",b.name,e);
+    }
+
+    if(realStatus?.submitted)continue;
+
+    const delay=450+Math.floor(Math.random()*750);
+
+    const timer=setTimeout(async()=>{
+      botVoteTimers.delete(key);
+
+      if(
+        !isHost ||
+        currentRoomData?.status!=="voting" ||
+        currentRoomData?.voteStage!=="collecting" ||
+        currentRoomData?.gameNo!==gameNo ||
+        currentVoteRound()!==voteRound
+      )return;
+
+      if(botVoteThinking.has(b.id))return;
+      botVoteThinking.add(b.id);
+
+      try{
+        const fresh=await authoritativeVoteStatus(b.id).catch(()=>null);
+        if(fresh?.submitted)return;
+
+        const a=await ensureBotAssignment(b.id);
+
+        const candidates=voteCandidateIds()
+          .filter(id=>id!==b.id)
+          .map(id=>rosterParticipant(id))
+          .filter(Boolean);
+
+        if(!candidates.length)return;
+
+        let target=chooseBotVote(
+          b.id,
+          a?.name||"Personnage inconnu",
+          candidates,
+          currentGameHints(),
+          messages,
+          b.difficulty||"Normal"
+        );
+
+        if(
+          !target ||
+          target===b.id ||
+          !candidates.some(p=>p.id===target)
+        ){
+          target=candidates[Math.floor(Math.random()*candidates.length)].id;
+        }
+
+        const id=`g${gameNo}_v${voteRound}_${b.id}`;
+        const voteRef=fb.fsMod.doc(db,"rooms",currentRoom,"votes",id);
+        const statusRef=fb.fsMod.doc(db,"rooms",currentRoom,"voteStatus",id);
+
+        await Promise.all([
+          fb.fsMod.setDoc(
+            voteRef,
+            {
+              gameNo,
+              voteRound,
+              playerId:b.id,
+              targetId:target,
+              submitted:true,
+              confirmed:false,
+              updatedMs:now()
+            },
+            {merge:true}
+          ),
+          fb.fsMod.setDoc(
+            statusRef,
+            {
+              gameNo,
+              voteRound,
+              playerId:b.id,
+              playerName:b.name,
+              submitted:true,
+              confirmed:false,
+              updatedMs:now()
+            },
+            {merge:true}
+          )
+        ]);
+
+        scheduleRender();
+        scheduleHostTick(30);
+      }catch(e){
+        console.error("AI VOTE FAILED",b.name,e);
+      }finally{
+        botVoteThinking.delete(b.id);
+      }
+    },delay);
+
+    botVoteTimers.set(key,timer);
+  }
+}
+
 async function ensureBotAssignment(botId){
   let a=botAssignments[botId];
   if(a)return a;
@@ -768,18 +978,29 @@ async function guaranteeBotConfirmations(){
     currentRoomData?.voteStage!=="confirming"
   )return;
 
-  const voters=voteVoterIds();
-  const statusMap=voteStatusMap();
+  const gameNo=currentRoomData.gameNo;
+  const voteRound=currentVoteRound();
+  const botsToConfirm=rosterBotsForVote();
 
-  for(const b of bots.filter(x=>voters.includes(x.id))){
-    if(statusMap.get(b.id)?.confirmed || botConfirmThinking.has(b.id))continue;
+  for(const b of botsToConfirm){
+    if(botConfirmThinking.has(b.id))continue;
+
+    const cached=voteStatusMap().get(b.id);
+    if(cached?.confirmed)continue;
 
     botConfirmThinking.add(b.id);
+
     try{
-      const id=`g${currentRoomData.gameNo}_v${currentVoteRound()}_${b.id}`;
+      const id=`g${gameNo}_v${voteRound}_${b.id}`;
       const voteRef=fb.fsMod.doc(db,"rooms",currentRoom,"votes",id);
       const statusRef=fb.fsMod.doc(db,"rooms",currentRoom,"voteStatus",id);
-      const voteSnap=await fb.fsMod.getDoc(voteRef);
+
+      const [voteSnap,statusSnap]=await Promise.all([
+        fb.fsMod.getDoc(voteRef),
+        fb.fsMod.getDoc(statusRef)
+      ]);
+
+      if(statusSnap.exists() && statusSnap.data().confirmed)continue;
 
       if(!voteSnap.exists()){
         await fb.fsMod.updateDoc(
@@ -788,6 +1009,16 @@ async function guaranteeBotConfirmations(){
         );
         return;
       }
+
+      await sleep(300+Math.floor(Math.random()*500));
+
+      if(
+        !isHost ||
+        currentRoomData?.status!=="voting" ||
+        currentRoomData?.voteStage!=="confirming" ||
+        currentRoomData?.gameNo!==gameNo ||
+        currentVoteRound()!==voteRound
+      )continue;
 
       await Promise.all([
         fb.fsMod.setDoc(
@@ -798,8 +1029,8 @@ async function guaranteeBotConfirmations(){
         fb.fsMod.setDoc(
           statusRef,
           {
-            gameNo:currentRoomData.gameNo,
-            voteRound:currentVoteRound(),
+            gameNo,
+            voteRound,
             playerId:b.id,
             playerName:b.name,
             submitted:true,
@@ -809,14 +1040,15 @@ async function guaranteeBotConfirmations(){
           {merge:true}
         )
       ]);
+
+      scheduleRender();
+      scheduleHostTick(30);
     }catch(e){
-      console.error("bot confirmation",b.name,e);
+      console.error("AI CONFIRM FAILED",b.name,e);
     }finally{
       botConfirmThinking.delete(b.id);
     }
   }
-
-  scheduleHostTick(80);
 }
 
 async function hostProcessVoting(){
@@ -825,104 +1057,14 @@ async function hostProcessVoting(){
   const stage=currentRoomData.voteStage;
   const voters=voteVoterIds();
   const sm=voteStatusMap();
+
   if(!voters.length)return;
 
-  // Si un ancien état a sauté un joueur, on revient au vote.
-  if(
-    ["reconsider","confirming"].includes(stage) &&
-    voters.some(id=>!sm.get(id)?.submitted)
-  ){
-    await fb.fsMod.updateDoc(
-      fb.fsMod.doc(db,"rooms",currentRoom),
-      {voteStage:"collecting",reconsiderEndsAt:null}
-    );
-    return;
-  }
-
   if(stage==="collecting"){
-    // Chaque IA vote réellement, l'une après l'autre.
-    for(const b of bots.filter(x=>voters.includes(x.id))){
-      if(sm.get(b.id)?.submitted || botVoteThinking.has(b.id))continue;
-
-      botVoteThinking.add(b.id);
-      try{
-        const a=await ensureBotAssignment(b.id);
-
-        // Petit temps de réflexion pour éviter l'effet "robot instantané".
-        await sleep(450+Math.floor(Math.random()*700));
-
-        if(
-          !isHost ||
-          currentRoomData?.status!=="voting" ||
-          currentRoomData?.voteStage!=="collecting"
-        )continue;
-
-        const latestStatus=voteStatusMap().get(b.id);
-        if(latestStatus?.submitted)continue;
-
-        const candidates=voteCandidateIds()
-          .filter(id=>id!==b.id)
-          .map(id=>rosterParticipant(id))
-          .filter(Boolean);
-
-        if(!candidates.length)continue;
-
-        // IMPORTANT :
-        // chooseBotVote reçoit uniquement :
-        // - le personnage propre de l'IA
-        // - les joueurs
-        // - les indices publics
-        // - les discussions
-        // Elle ne reçoit pas l'identité de l'imposteur.
-        let target=chooseBotVote(
-          b.id,
-          a?.name||"Personnage inconnu",
-          candidates,
-          currentGameHints(),
-          messages,
-          b.difficulty
-        );
-
-        // Même si le moteur IA ne tranche pas, le bot doit voter.
-        if(!target || target===b.id || !candidates.some(p=>p.id===target)){
-          target=candidates[Math.floor(Math.random()*candidates.length)].id;
-        }
-
-        const id=`g${currentRoomData.gameNo}_v${currentVoteRound()}_${b.id}`;
-
-        await fb.fsMod.setDoc(
-          fb.fsMod.doc(db,"rooms",currentRoom,"votes",id),
-          {
-            gameNo:currentRoomData.gameNo,
-            voteRound:currentVoteRound(),
-            playerId:b.id,
-            targetId:target,
-            submitted:true,
-            confirmed:false,
-            updatedMs:now()
-          },
-          {merge:true}
-        );
-
-        await fb.fsMod.setDoc(
-          fb.fsMod.doc(db,"rooms",currentRoom,"voteStatus",id),
-          {
-            gameNo:currentRoomData.gameNo,
-            voteRound:currentVoteRound(),
-            playerId:b.id,
-            playerName:b.name,
-            submitted:true,
-            confirmed:false,
-            updatedMs:now()
-          },
-          {merge:true}
-        );
-      }finally{
-        botVoteThinking.delete(b.id);
-      }
-    }
+    await guaranteeBotVotes();
 
     const latest=voteStatusMap();
+
     if(voters.every(id=>latest.get(id)?.submitted)){
       const end=fb.fsMod.Timestamp.fromMillis(
         now()+(currentRoomData.reconsiderSeconds||15)*1000
@@ -942,58 +1084,15 @@ async function hostProcessVoting(){
   }
 
   if(stage==="confirming"){
-    // Les IA confirment elles-mêmes. Elles ne restent jamais figées.
-    for(const b of bots.filter(x=>voters.includes(x.id))){
-      if(sm.get(b.id)?.confirmed || botConfirmThinking.has(b.id))continue;
-
-      botConfirmThinking.add(b.id);
-      try{
-        await sleep(350+Math.floor(Math.random()*650));
-
-        if(
-          !isHost ||
-          currentRoomData?.status!=="voting" ||
-          currentRoomData?.voteStage!=="confirming"
-        )continue;
-
-        const id=`g${currentRoomData.gameNo}_v${currentVoteRound()}_${b.id}`;
-        const vote=await fb.fsMod.getDoc(
-          fb.fsMod.doc(db,"rooms",currentRoom,"votes",id)
-        );
-
-        if(!vote.exists()){
-          // Un vote IA manquant ne doit pas bloquer définitivement :
-          // on rouvre la collecte.
-          await fb.fsMod.updateDoc(
-            fb.fsMod.doc(db,"rooms",currentRoom),
-            {voteStage:"collecting",reconsiderEndsAt:null}
-          );
-          return;
-        }
-
-        await fb.fsMod.setDoc(
-          fb.fsMod.doc(db,"rooms",currentRoom,"votes",id),
-          {confirmed:true,updatedMs:now()},
-          {merge:true}
-        );
-
-        await fb.fsMod.setDoc(
-          fb.fsMod.doc(db,"rooms",currentRoom,"voteStatus",id),
-          {
-            gameNo:currentRoomData.gameNo,
-            voteRound:currentVoteRound(),
-            playerId:b.id,
-            playerName:b.name,
-            submitted:true,
-            confirmed:true,
-            updatedMs:now()
-          },
-          {merge:true}
-        );
-      }finally{
-        botConfirmThinking.delete(b.id);
-      }
+    if(voters.some(id=>!sm.get(id)?.submitted)){
+      await fb.fsMod.updateDoc(
+        fb.fsMod.doc(db,"rooms",currentRoom),
+        {voteStage:"collecting",reconsiderEndsAt:null}
+      );
+      return;
     }
+
+    await guaranteeBotConfirmations();
 
     const latest=voteStatusMap();
     if(voters.every(id=>latest.get(id)?.confirmed)){
@@ -1472,4 +1571,4 @@ window.addEventListener("pagehide",markOffline);
 
 const savedName=localStorage.getItem("imposteur_name");if(savedName)$("#home-name").value=savedName;
 renderAnimeGrid();refreshAiStatus();armAppHistory();initFirebase();
-if("serviceWorker" in navigator)window.addEventListener("load",async()=>{try{const r=await navigator.serviceWorker.register("./service-worker.js?v=8.1");r.update().catch(()=>{})}catch{}});
+if("serviceWorker" in navigator)window.addEventListener("load",async()=>{try{const r=await navigator.serviceWorker.register("./service-worker.js?v=8.2");r.update().catch(()=>{})}catch{}});
