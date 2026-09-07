@@ -1,9 +1,9 @@
-﻿import { firebaseConfig } from "./firebase-config.js";
-import { animeDB, chooseIntelligentPair, getAiStats } from "./ai-engine.js?v=8.4";
+import { firebaseConfig } from "./firebase-config.js";
+import { animeDB, chooseIntelligentPair, getAiStats } from "./ai-engine.js?v=8.4.1";
 import {
   chooseAdaptiveBotHint, chooseBotVote, botVoteApproval,
   buildBotDiscussion, shouldBotReply, botReplyDelay, resetBotMemory
-} from "./bot-engine.js?v=8.4";
+} from "./bot-engine.js?v=8.4.1";
 
 const $=s=>document.querySelector(s);
 const $$=s=>[...document.querySelectorAll(s)];
@@ -115,7 +115,7 @@ function cleanupRoom(){
 async function initFirebase(){
   if(!firebaseConfig){
     $("#fatal-config").classList.remove("hidden");
-    $("#fatal-config").innerHTML="<strong>Firebase non configurÃ©.</strong><span>Relance le dÃ©ploiement V7.1.</span>";
+    $("#fatal-config").innerHTML="<strong>Firebase non configuré.</strong><span>Relance le déploiement V7.1.</span>";
     return;
   }
   try{
@@ -137,9 +137,9 @@ async function initFirebase(){
 }
 async function ensureUserReady(){
   if(currentUser&&fb&&db)return currentUser;
-  toast("Connexionâ€¦","Initialisation.");
+  toast("Connexion…","Initialisation.");
   for(let i=0;i<40;i++){if(currentUser&&fb&&db)return currentUser;await sleep(250)}
-  throw new Error("Firebase nâ€™est pas prÃªt.");
+  throw new Error("Firebase n’est pas prêt.");
 }
 
 function participants(){return [...players,...bots]}
@@ -193,13 +193,13 @@ function reconsiderEndMs(){
 async function createRoom({solo=false}={}){
   await ensureUserReady();
   const btn=solo?$("#solo-room-btn"):$("#create-room-btn"),old=btn.textContent;
-  btn.disabled=true;btn.textContent=solo?"PrÃ©parationâ€¦":"CrÃ©ationâ€¦";
+  btn.disabled=true;btn.textContent=solo?"Préparation…":"Création…";
   try{
     const name=safeName($("#home-name").value);localStorage.setItem("imposteur_name",name);
     const {doc,getDoc,setDoc,serverTimestamp,Timestamp}=fb.fsMod;
     let code=null;
     for(let i=0;i<12;i++){const c=randomCode();if(!(await getDoc(doc(db,"rooms",c))).exists()){code=c;break}}
-    if(!code)throw new Error("Impossible de gÃ©nÃ©rer la salle.");
+    if(!code)throw new Error("Impossible de générer la salle.");
 
     await setDoc(doc(db,"rooms",code),{
       hostUid:currentUser.uid,hostLeaseUntil:Timestamp.fromMillis(now()+HOST_LEASE_MS),
@@ -217,33 +217,31 @@ async function createRoom({solo=false}={}){
         });
       }
     }
-    await enterRoom(code);toast(solo?"Mode solo prÃªt":"Salle crÃ©Ã©e",solo?"4 IA sont prÃªtes.":`Code : ${code}`);
+    await enterRoom(code);toast(solo?"Mode solo prêt":"Salle créée",solo?"4 IA sont prêtes.":`Code : ${code}`);
   }finally{btn.disabled=false;btn.textContent=old}
 }
 async function joinRoom(){
   await ensureUserReady();
   const btn=$("#join-room-btn"),old=btn.textContent;
   btn.disabled=true;
-  btn.textContent="Connexion...";
+  btn.textContent="Connexion…";
 
   try{
     const code=$("#join-code").value.trim().toUpperCase();
-    if(code.length!==5)throw new Error("Le code doit contenir 5 caracteres.");
+    if(code.length!==5)throw new Error("Le code doit contenir 5 caractères.");
 
     const {doc,getDoc,setDoc,serverTimestamp}=fb.fsMod;
 
-    // La salle peut etre lue avant l'inscription.
+    // On peut lire la salle avant l'inscription.
     const room=await getDoc(doc(db,"rooms",code));
     if(!room.exists())throw new Error("Salle introuvable.");
 
     const roomData=room.data();
     const meRef=doc(db,"rooms",code,"players",currentUser.uid);
 
-    // V8.4 :
-    // NE PLUS lire players/<uid> avant de rejoindre.
-    // Cette ancienne lecture etait bloquee par les regles Firestore
-    // pour un nouveau joueur et causait:
-    // "Missing or insufficient permissions."
+    // V8.4.1 :
+    // Ne PAS faire getDoc(meRef) avant l'inscription.
+    // Les règles Firestore refusent cette lecture à un nouveau joueur.
     try{
       await setDoc(meRef,{
         name:safeName($("#home-name").value),
@@ -259,10 +257,8 @@ async function joinRoom(){
         e?.code==="permission-denied" ||
         String(e?.message||"").toLowerCase().includes("insufficient permissions");
 
-      // Un nouveau joueur ne peut pas entrer apres le demarrage.
-      // Un joueur deja membre peut toutefois remettre son document a jour.
       if(denied && roomData.status!=="lobby"){
-        throw new Error("Cette partie a deja commence.");
+        throw new Error("Cette partie a déjà commencé.");
       }
       throw e;
     }
@@ -293,7 +289,7 @@ async function enterRoom(code){
   const {doc,collection,onSnapshot}=fb.fsMod;
 
   roomUnsubs.push(onSnapshot(doc(db,"rooms",code),snap=>{
-    if(!snap.exists()){if(!leavingRoom)toast("Salle fermÃ©e");resetHome();return}
+    if(!snap.exists()){if(!leavingRoom)toast("Salle fermée");resetHome();return}
     const prev=currentRoomData;currentRoomData=snap.data();
     const wasHost=isHost;isHost=currentRoomData.hostUid===currentUser.uid;
 
@@ -321,11 +317,11 @@ async function enterRoom(code){
       subscribeMyVote();
     }
     if(prev?.status!==currentRoomData.status&&currentRoomData.status==="voting"){
-      toast("Vote acceptÃ©","Le vote commence.");
+      toast("Vote accepté","Le vote commence.");
       if(isHost)startBotVoteWatchdog();
     }
-    if(prev?.status!==currentRoomData.status&&currentRoomData.status==="postvote")toast("RÃ©sultat","La discussion reste ouverte.");
-    if((currentRoomData.voteRound||1)>(prev?.voteRound||1)&&currentRoomData.status==="voting")toast("Ã‰galitÃ©","Nouveau vote entre les ex Ã¦quo.");
+    if(prev?.status!==currentRoomData.status&&currentRoomData.status==="postvote")toast("Résultat","La discussion reste ouverte.");
+    if((currentRoomData.voteRound||1)>(prev?.voteRound||1)&&currentRoomData.status==="voting")toast("Égalité","Nouveau vote entre les ex æquo.");
 
     scheduleRender();scheduleHostTick();armVoteTimer();repairCorruptedRoster().catch(()=>{});
     if(
@@ -377,7 +373,7 @@ function subscribeGameData(gameNo){
   gameUnsubs.push(onSnapshot(query(collection(db,"rooms",currentRoom,"hints"),where("gameNo","==",gameNo)),snap=>{
     const next=snap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(a.round-b.round)||(a.orderIndex-b.orderIndex)||(a.createdMs-b.createdMs));
     if(collectionReady.hints){
-      for(const h of next)if(!lastHintIds.has(h.id)){if(activeTab!=="hints"){unreadHints++;renderBadges()}toast(h.playerName,h.revealed?`Â« ${h.word} Â»`:"Indice enregistrÃ©")}
+      for(const h of next)if(!lastHintIds.has(h.id)){if(activeTab!=="hints"){unreadHints++;renderBadges()}toast(h.playerName,h.revealed?`« ${h.word} »`:"Indice enregistré")}
     }
     hints=next;lastHintIds=new Set(next.map(x=>x.id));collectionReady.hints=true;scheduleRender();scheduleHostTick();
   }));
@@ -593,7 +589,7 @@ async function repairCorruptedRoster(){
       fb.fsMod.doc(db,"rooms",currentRoom),
       patch
     );
-    // V8.1: rÃ©paration silencieuse pour Ã©viter les toasts en boucle.
+    // V8.1: réparation silencieuse pour éviter les toasts en boucle.
   }
 }
 
@@ -674,12 +670,12 @@ async function hostProcessTurn(){
 async function sendHint(){
   if(currentRoomData?.status!=="playing")return toast("Indices indisponibles","Le vote est en cours.");
   const order=activeOrder(),p=rosterParticipant(order[currentRoomData.turnIndex||0]);
-  if(!p)return toast("Synchronisation","Le tour se prÃ©pare.");
-  if(p.id!==currentUser.uid)return toast("Pas encore ton tour",`Câ€™est Ã  ${p.name}.`);
+  if(!p)return toast("Synchronisation","Le tour se prépare.");
+  if(p.id!==currentUser.uid)return toast("Pas encore ton tour",`C’est à ${p.name}.`);
   const word=$("#hint-input").value.trim();
-  if(!word||/\s/.test(word))return toast("Un seul mot","Ã‰cris un seul mot.");
-  if(trancheHints().some(h=>h.playerId===currentUser.uid))return toast("DÃ©jÃ  envoyÃ©","Attends la tranche suivante.");
-  if(currentGameHints().some(h=>norm(h.word)===norm(word)))return toast("Mot dÃ©jÃ  utilisÃ©","Choisis un autre mot.");
+  if(!word||/\s/.test(word))return toast("Un seul mot","Écris un seul mot.");
+  if(trancheHints().some(h=>h.playerId===currentUser.uid))return toast("Déjà envoyé","Attends la tranche suivante.");
+  if(currentGameHints().some(h=>norm(h.word)===norm(word)))return toast("Mot déjà utilisé","Choisis un autre mot.");
   await fb.fsMod.setDoc(fb.fsMod.doc(db,"rooms",currentRoom,"hints",`g${currentRoomData.gameNo}_r${currentRoomData.hintRound}_${currentUser.uid}`),{
     gameNo:currentRoomData.gameNo,round:currentRoomData.hintRound,playerId:currentUser.uid,
     playerName:participantById(currentUser.uid)?.name||"Joueur",word,revealed:!currentRoomData.hiddenHints,
@@ -698,16 +694,16 @@ async function sendMessage(text,playerId=currentUser.uid,playerName=null){
 
 async function proposeVote(){
   if(currentRoomData?.status!=="playing")return;
-  if(currentRoomData.voteProposal?.state==="open")return toast("Vote dÃ©jÃ  proposÃ©");
+  if(currentRoomData.voteProposal?.state==="open")return toast("Vote déjà proposé");
   const proposal={token:randomId("vote"),by:currentUser.uid,byName:participantById(currentUser.uid)?.name||"Joueur",createdMs:now(),state:"open"};
   const ref=fb.fsMod.doc(db,"rooms",currentRoom);
   await fb.fsMod.runTransaction(db,async tx=>{
-    const snap=await tx.get(ref);if(!snap.exists())throw new Error("Salle fermÃ©e");
+    const snap=await tx.get(ref);if(!snap.exists())throw new Error("Salle fermée");
     const d=snap.data();if(d.status!=="playing"||d.voteProposal?.state==="open")throw new Error("Vote indisponible");
     tx.update(ref,{voteProposal:proposal});
   });
   await answerVoteRequest("yes",proposal.token);
-  toast("Vote proposÃ©","Les indices continuent pendant la dÃ©cision.");
+  toast("Vote proposé","Les indices continuent pendant la décision.");
 }
 async function answerVoteRequest(decision,token=currentRoomData?.voteProposal?.token){
   if(!token)return;
@@ -747,8 +743,8 @@ async function hostProcessProposal(){
 
 function voteDocId(playerId){return `g${currentRoomData.gameNo}_v${currentVoteRound()}_${playerId}`}
 async function writeMyVote(targetId){
-  if(currentRoomData?.status!=="voting"||!["collecting","reconsider"].includes(currentRoomData.voteStage))return toast("Vote figÃ©");
-  if(targetId===currentUser.uid)return toast("Vote impossible","Tu ne peux pas voter pour toi-mÃªme.");
+  if(currentRoomData?.status!=="voting"||!["collecting","reconsider"].includes(currentRoomData.voteStage))return toast("Vote figé");
+  if(targetId===currentUser.uid)return toast("Vote impossible","Tu ne peux pas voter pour toi-même.");
   myVoteTargetId=targetId;
   if(!voteCandidateIds().includes(targetId))return;
   const id=voteDocId(currentUser.uid),base={
@@ -762,7 +758,7 @@ async function writeMyVote(targetId){
 }
 async function repairMyVote(targetId){
   if(currentRoomData?.status!=="voting")return;
-  if(targetId===currentUser.uid)return toast("Vote impossible","Tu ne peux pas voter pour toi-mÃªme.");
+  if(targetId===currentUser.uid)return toast("Vote impossible","Tu ne peux pas voter pour toi-même.");
   if(!voteCandidateIds().includes(targetId))return;
 
   const id=voteDocId(currentUser.uid);
@@ -1024,8 +1020,8 @@ async function ensureBotAssignment(botId){
   }
 
   // Fallback volontaire :
-  // l'IA doit quand mÃªme prendre une dÃ©cision Ã  partir des indices/messages.
-  // Elle ne reÃ§oit JAMAIS impostorId.
+  // l'IA doit quand même prendre une décision à partir des indices/messages.
+  // Elle ne reçoit JAMAIS impostorId.
   return {name:"Personnage inconnu"};
 }
 
@@ -1047,7 +1043,7 @@ async function clientGuaranteeBotConfirmations(){
   for(const b of roomBots){
     const s=statuses.get(b.id);
 
-    // On ne touche qu'Ã  une IA qui a DEJA votÃ© mais n'a pas confirmÃ©.
+    // On ne touche qu'à une IA qui a DEJA voté mais n'a pas confirmé.
     if(!s?.submitted || s?.confirmed || clientBotConfirming.has(b.id))continue;
 
     clientBotConfirming.add(b.id);
@@ -1067,7 +1063,7 @@ async function clientGuaranteeBotConfirmations(){
       const voteRef=fb.fsMod.doc(db,"rooms",currentRoom,"votes",id);
       const statusRef=fb.fsMod.doc(db,"rooms",currentRoom,"voteStatus",id);
 
-      // Le choix secret de l'IA n'est PAS modifiÃ©.
+      // Le choix secret de l'IA n'est PAS modifié.
       // On passe uniquement confirmed=false -> true.
       await Promise.all([
         fb.fsMod.setDoc(
@@ -1322,26 +1318,26 @@ function routeByStatus(){
   $("#host-next-game").classList.toggle("hidden",!(isHost&&post&&!chat));
 
   const nav=$('[data-game-tab="hints"] span:nth-child(2)');
-  if(nav)nav.textContent=vote?"Vote":post?"RÃ©sultat":"Indices";
+  if(nav)nav.textContent=vote?"Vote":post?"Résultat":"Indices";
 }
 function renderRoomRole(){
   $("#host-panel").classList.toggle("hidden",!isHost);$("#guest-wait").classList.toggle("hidden",isHost);
-  patchText("#my-role-pill",isHost?"ðŸ‘‘ HÃ´te":"Joueur");
+  patchText("#my-role-pill",isHost?"👑 Hôte":"Joueur");
 }
 function renderLobbyPlayers(){
   const all=participants();patchText("#player-count",`${all.length} joueur${all.length>1?"s":""}`);
   patchHTML("#players-list",all.map(p=>{
     const host=!p.bot&&p.id===currentRoomData?.hostUid,me=!p.bot&&p.id===currentUser?.uid,online=p.bot||now()-(p.lastSeenMs||0)<OFFLINE_DROP_MS;
-    return `<div class="player-row"><div class="avatar ${p.bot?"bot":""}">${p.bot?"ðŸ¤–":esc((p.name||"?")[0].toUpperCase())}</div>
-      <div class="player-meta"><div class="player-name">${esc(p.name)}</div><div class="player-sub">${p.bot?`IA â€¢ ${esc(p.difficulty||"Normal")}`:host?"ðŸ‘‘ HÃ´te":me?"Toi":online?"Ã€ distance":"Hors ligne"}</div></div>
-      ${isHost&&p.bot?`<button class="remove-bot" data-remove-bot="${p.id}">Ã—</button>`:`<span class="${online?"status-ok":"status-off"}">â—</span>`}</div>`;
+    return `<div class="player-row"><div class="avatar ${p.bot?"bot":""}">${p.bot?"🤖":esc((p.name||"?")[0].toUpperCase())}</div>
+      <div class="player-meta"><div class="player-name">${esc(p.name)}</div><div class="player-sub">${p.bot?`IA • ${esc(p.difficulty||"Normal")}`:host?"👑 Hôte":me?"Toi":online?"À distance":"Hors ligne"}</div></div>
+      ${isHost&&p.bot?`<button class="remove-bot" data-remove-bot="${p.id}">×</button>`:`<span class="${online?"status-ok":"status-off"}">●</span>`}</div>`;
   }).join(""));
   $("#start-game-btn").disabled=all.length<3;$("#start-game-btn").textContent=all.length<3?"3 participants minimum":"Commencer la partie";
 }
 function renderGameHeader(){
-  patchText("#game-round-label",`Partie ${currentRoomData.gameNo||0} â€¢ Tranche ${currentRoomData.hintRound||0}`);
+  patchText("#game-round-label",`Partie ${currentRoomData.gameNo||0} • Tranche ${currentRoomData.hintRound||0}`);
   patchText("#tranche-pill",`Tranche ${currentRoomData.hintRound||1}`);
-  patchText("#phase-label",{playing:"Indices / Discussion",voting:"Vote / Discussion",postvote:"RÃ©sultat / Discussion"}[currentRoomData.status]||currentRoomData.status);
+  patchText("#phase-label",{playing:"Indices / Discussion",voting:"Vote / Discussion",postvote:"Résultat / Discussion"}[currentRoomData.status]||currentRoomData.status);
   renderTurn();
 }
 function renderGamePlayers(){
@@ -1357,7 +1353,7 @@ function renderGamePlayers(){
     "#game-players",
     (currentRoomData.roster||[]).map(p=>`
       <div class="game-player ${current===p.id&&currentRoomData.status==="playing"?"turn":""} ${active.has(p.id)?"":"inactive"}">
-        <div class="avatar ${p.bot?"bot":""}">${p.bot?"ðŸ¤–":esc((p.name||"?")[0])}</div>
+        <div class="avatar ${p.bot?"bot":""}">${p.bot?"🤖":esc((p.name||"?")[0])}</div>
         <div class="game-player-name">${esc(p.name)}</div>
       </div>
     `).join("")
@@ -1369,20 +1365,20 @@ function renderTurn(){
   const order=activeOrder(),p=rosterParticipant(order[currentRoomData.turnIndex||0]),given=trancheGiven(),count=order.filter(id=>given.has(id)).length;
   const input=$("#hint-input"),send=$("#send-hint-btn"),note=$("#hint-wait-note"),box=$("#turn-box");input.disabled=false;
   if(!p){
-    box.className="turn-banner turn-waiting";box.innerHTML=`<div class="turn-avatar">â€¦</div><div class="turn-copy"><span class="turn-kicker">TRANCHE ${currentRoomData.hintRound||1}</span><strong>Synchronisationâ€¦</strong><small>Le tour se prÃ©pare.</small></div>`;
+    box.className="turn-banner turn-waiting";box.innerHTML=`<div class="turn-avatar">…</div><div class="turn-copy"><span class="turn-kicker">TRANCHE ${currentRoomData.hintRound||1}</span><strong>Synchronisation…</strong><small>Le tour se prépare.</small></div>`;
     send.disabled=true;send.classList.remove("ready");return;
   }
   const mine=p.id===currentUser.uid;
   box.className=`turn-banner ${mine?"turn-mine":p.bot?"turn-bot":"turn-other"}`;
-  box.innerHTML=`<div class="turn-avatar">${p.bot?"ðŸ¤–":esc((p.name||"?")[0].toUpperCase())}</div><div class="turn-copy">
-    <span class="turn-kicker">${mine?"Ã€ TON TOUR":`TRANCHE ${currentRoomData.hintRound||1} â€¢ ${count}/${order.length}`}</span>
-    <strong>${mine?"Donne ton indice":`Tour de ${esc(p.name)}${p.bot?" ðŸ¤–":""}`}</strong><small>${mine?"Un mot puis âž¤.":p.bot?"Lâ€™IA rÃ©flÃ©chitâ€¦":"En attente de son indiceâ€¦"}</small></div>`;
-  send.disabled=!mine;send.classList.toggle("ready",mine);input.placeholder=mine?"Ã‰cris ton indiceâ€¦":"PrÃ©pare ton prochain indiceâ€¦";
-  note.textContent=mine?"Appuie sur âž¤ pour envoyer.":"Tu peux prÃ©parer ton prochain mot.";
+  box.innerHTML=`<div class="turn-avatar">${p.bot?"🤖":esc((p.name||"?")[0].toUpperCase())}</div><div class="turn-copy">
+    <span class="turn-kicker">${mine?"À TON TOUR":`TRANCHE ${currentRoomData.hintRound||1} • ${count}/${order.length}`}</span>
+    <strong>${mine?"Donne ton indice":`Tour de ${esc(p.name)}${p.bot?" 🤖":""}`}</strong><small>${mine?"Un mot puis ➤.":p.bot?"L’IA réfléchit…":"En attente de son indice…"}</small></div>`;
+  send.disabled=!mine;send.classList.toggle("ready",mine);input.placeholder=mine?"Écris ton indice…":"Prépare ton prochain indice…";
+  note.textContent=mine?"Appuie sur ➤ pour envoyer.":"Tu peux préparer ton prochain mot.";
 }
 function renderHints(){
   const data=currentGameHints().filter(h=>h.revealed||h.playerId===currentUser.uid||isHost);
-  patchText("#hint-count",data.length);patchHTML("#hints-list",data.slice(-60).map(h=>`<div class="hint-row"><b>${esc(h.playerName)}</b><strong>${h.revealed?esc(h.word):"â€¢â€¢â€¢â€¢"}</strong><span>T${h.round}</span></div>`).join("")||`<div class="player-sub">Aucun indice.</div>`);
+  patchText("#hint-count",data.length);patchHTML("#hints-list",data.slice(-60).map(h=>`<div class="hint-row"><b>${esc(h.playerName)}</b><strong>${h.revealed?esc(h.word):"••••"}</strong><span>T${h.round}</span></div>`).join("")||`<div class="player-sub">Aucun indice.</div>`);
 }
 function renderMessages(){
   const list=$("#chat-list");if(!list)return;
@@ -1395,13 +1391,13 @@ function renderMessages(){
 function renderProposal(){
   const p=currentRoomData.voteProposal;if(!p||currentRoomData.status!=="playing")return;
   const voters=activeOrder(),a=voteApprovals.filter(x=>x.token===p.token&&voters.includes(x.playerId)),yes=a.filter(x=>x.decision==="yes").length,mine=a.find(x=>x.playerId===currentUser.uid);
-  patchText("#vote-request-by",p.state==="rejected"?"Proposition refusÃ©e. Les indices continuent.":`${p.byName} propose de voter. Les indices continuent.`);
+  patchText("#vote-request-by",p.state==="rejected"?"Proposition refusée. Les indices continuent.":`${p.byName} propose de voter. Les indices continuent.`);
   $("#vote-request-progress").style.width=`${Math.round(yes/Math.max(1,voters.length)*100)}%`;
-  patchText("#vote-request-stats",`${yes}/${voters.length} acceptent â€¢ il faut plus de 50 %`);
+  patchText("#vote-request-stats",`${yes}/${voters.length} acceptent • il faut plus de 50 %`);
   if(p.state!=="open")patchHTML("#vote-request-actions",`<div class="player-sub">La partie continue.</div>`);
-  else if(mine)patchHTML("#vote-request-actions",`<div class="player-sub">RÃ©ponse enregistrÃ©e : ${mine.decision==="yes"?"âœ… accepter":"âŒ continuer"}</div>`);
+  else if(mine)patchHTML("#vote-request-actions",`<div class="player-sub">Réponse enregistrée : ${mine.decision==="yes"?"✅ accepter":"❌ continuer"}</div>`);
   else{
-    patchHTML("#vote-request-actions",`<button class="yes-btn" id="vote-yes">âœ… Voter</button><button class="no-btn" id="vote-no">âŒ Continuer</button>`);
+    patchHTML("#vote-request-actions",`<button class="yes-btn" id="vote-yes">✅ Voter</button><button class="no-btn" id="vote-no">❌ Continuer</button>`);
     $("#vote-yes")?.addEventListener("click",()=>answerVoteRequest("yes"));$("#vote-no")?.addEventListener("click",()=>answerVoteRequest("no"));
   }
 }
@@ -1417,8 +1413,8 @@ function renderVoting(){
     stage==="collecting"
       ?"Choisis ton suspect."
       :stage==="reconsider"
-        ?"Tout le monde a votÃ© : tu peux encore changer."
-        :"Vote figÃ© : confirme dÃ©finitivement."
+        ?"Tout le monde a voté : tu peux encore changer."
+        :"Vote figé : confirme définitivement."
   );
 
   $("#vote-timer").classList.toggle("hidden",stage!=="reconsider");
@@ -1433,7 +1429,7 @@ function renderVoting(){
         <span>${esc(p?.name||"Joueur")}</span>
         <span style="display:flex;gap:5px;align-items:center">
           <i class="status-dot ${cls}"></i>
-          ${s?.confirmed?"ConfirmÃ©":s?.submitted?"A votÃ©":"Attente"}
+          ${s?.confirmed?"Confirmé":s?.submitted?"A voté":"Attente"}
         </span>
       </div>`;
     }).join("")
@@ -1479,10 +1475,10 @@ function renderVoting(){
     "#my-vote-label",
     chosenName
       ? (stage==="confirming"
-          ? `Ton vote figÃ© : ${chosenName}`
+          ? `Ton vote figé : ${chosenName}`
           : `Choix actuel : ${chosenName}`)
       : mine?.submitted
-        ? "Vote enregistrÃ© â€” touche un joueur pour restaurer ton choix."
+        ? "Vote enregistré — touche un joueur pour restaurer ton choix."
         : "Aucun choix"
   );
 
@@ -1506,11 +1502,11 @@ function updateVoteCountdown(){
 }
 async function renderResult(){
   const r=currentRoomData.result;if(!r)return;
-  const normals=r.winner==="normal";patchText("#result-emoji",normals?"ðŸ†":"ðŸ˜ˆ");patchText("#result-title",normals?"Les joueurs normaux gagnent !":"Lâ€™imposteur gagne !");
+  const normals=r.winner==="normal";patchText("#result-emoji",normals?"🏆":"😈");patchText("#result-title",normals?"Les joueurs normaux gagnent !":"L’imposteur gagne !");
   patchText("#result-majority-name",r.majority.name);patchText("#result-impostor-name",r.outsider.name);$("#result-images").classList.remove("hidden");
   setCharacterPhoto($("#result-majority-photo"),r.majority.name);setCharacterPhoto($("#result-impostor-photo"),r.outsider.name);
   const imp=participantById(r.impostorId),elim=participantById(r.eliminatedId);
-  $("#result-text").innerHTML=normals?`Lâ€™imposteur Ã©tait <b>${esc(imp?.name||"")}</b>.`:`Le groupe a Ã©liminÃ© <b>${esc(elim?.name||"")}</b>.<br><br>Lâ€™imposteur Ã©tait <b>${esc(imp?.name||"")}</b>.`;
+  $("#result-text").innerHTML=normals?`L’imposteur était <b>${esc(imp?.name||"")}</b>.`:`Le groupe a éliminé <b>${esc(elim?.name||"")}</b>.<br><br>L’imposteur était <b>${esc(imp?.name||"")}</b>.`;
 }
 function renderScores(){patchHTML("#score-list",participants().sort((a,b)=>(b.score||0)-(a.score||0)).map(p=>`<div class="score-row"><span>${esc(p.name)}</span><b>${p.score||0}</b></div>`).join(""))}
 function renderBadges(){patchText("#hints-badge",unreadHints);$("#hints-badge").classList.toggle("hidden",!unreadHints);patchText("#chat-badge",unreadChat);$("#chat-badge").classList.toggle("hidden",!unreadChat)}
@@ -1524,13 +1520,13 @@ function selectedAnime(){return localSettings.mode==="auto"?animeDB:$$("#anime-g
 function renderAnimeGrid(){patchHTML("#anime-grid",animeDB.map(a=>`<label class="anime-option"><input type="checkbox" value="${esc(a)}" checked> ${esc(a)}</label>`).join(""))}
 function refreshAiStatus(){
   const stats=getAiStats({difficulty:localSettings.difficulty,allowedAnime:selectedAnime(),mix:$("#mix-anime").checked,popularityMin:96});
-  patchText("#ai-status",stats.count?`${stats.count} duos vÃ©rifiÃ©s`:"Aucun duo avec ces filtres");
-  patchText("#ai-details","Paires vÃ©rifiÃ©es manuellement â€¢ apparence + personnalitÃ© + rÃ´le + combat + histoire.");
+  patchText("#ai-status",stats.count?`${stats.count} duos vérifiés`:"Aucun duo avec ces filtres");
+  patchText("#ai-details","Paires vérifiées manuellement • apparence + personnalité + rôle + combat + histoire.");
 }
 async function addBot(name,difficulty){if(isHost)await fb.fsMod.setDoc(fb.fsMod.doc(db,"rooms",currentRoom,"bots",randomId("bot")),{name,difficulty,type:"bot",score:0})}
 async function fillBots(target=4){if(!isHost)return;const a=BOT_PROFILES.filter(p=>!bots.some(b=>b.name===p.name));for(const p of a.slice(0,Math.max(0,target-bots.length)))await addBot(p.name,p.difficulty)}
 async function removeBot(id){if(isHost)await fb.fsMod.deleteDoc(fb.fsMod.doc(db,"rooms",currentRoom,"bots",id))}
-function openBotModal(){patchHTML("#bot-options",BOT_PROFILES.map(p=>`<div class="player-row"><div class="avatar bot">ðŸ¤–</div><div class="player-meta"><div class="player-name">${p.name}</div><div class="player-sub">${p.difficulty}</div></div><button class="mini-btn" data-add-bot="${p.name}" data-diff="${p.difficulty}">Ajouter</button></div>`).join(""));$("#bot-modal").classList.remove("hidden")}
+function openBotModal(){patchHTML("#bot-options",BOT_PROFILES.map(p=>`<div class="player-row"><div class="avatar bot">🤖</div><div class="player-meta"><div class="player-name">${p.name}</div><div class="player-sub">${p.difficulty}</div></div><button class="mini-btn" data-add-bot="${p.name}" data-diff="${p.difficulty}">Ajouter</button></div>`).join(""));$("#bot-modal").classList.remove("hidden")}
 
 function armAppHistory(){
   if(historyGuardReady)return;
@@ -1569,7 +1565,7 @@ function handleAppBack(){
     return;
   }
 
-  // 2. Dans Messages : retour Ã  Indices / Vote / RÃ©sultat.
+  // 2. Dans Messages : retour à Indices / Vote / Résultat.
   if(currentScreen==="game" && activeTab==="chat"){
     setGameTab("hints");
     return;
@@ -1582,7 +1578,7 @@ function handleAppBack(){
   }
 
   // 4. Accueil : on ne ferme pas brutalement Chrome/PWA.
-  toast("Accueil","Tu es dÃ©jÃ  dans le menu principal.");
+  toast("Accueil","Tu es déjà dans le menu principal.");
 }
 
 window.__animeHandleBack=handleAppBack;
@@ -1602,7 +1598,7 @@ function openLeaveModal(){
         p=>p.id!==currentUser.uid && now()-(p.lastSeenMs||0)<OFFLINE_DROP_MS
       );
       text.textContent=otherHumans.length
-        ? `Tu es lâ€™hÃ´te. Le rÃ´le sera transfÃ©rÃ© Ã  ${otherHumans[0].name}.`
+        ? `Tu es l’hôte. Le rôle sera transféré à ${otherHumans[0].name}.`
         : "Tu es le dernier joueur humain. Quitter fermera la salle.";
     }else{
       text.textContent="Tu quitteras cette salle et tu reviendras au menu principal.";
@@ -1644,22 +1640,22 @@ async function getCharacterImage(name){
 async function setCharacterPhoto(img,name){if(!img)return;img.onerror=()=>{img.onerror=null;img.src=fallbackCharacterImage(name)};img.src=await getCharacterImage(name)}
 async function renderCharacter(){
   const visible=$("#toggle-character-btn").dataset.visible==="1";
-  if(!assignment){patchText("#character-name","â€¢â€¢â€¢â€¢â€¢â€¢");patchText("#character-anime","Secret");$("#character-photo-wrap").classList.add("hidden");return}
-  patchText("#character-name",visible?assignment.name:"â€¢â€¢â€¢â€¢â€¢â€¢");patchText("#character-anime",visible?assignment.anime:"Secret");
+  if(!assignment){patchText("#character-name","••••••");patchText("#character-anime","Secret");$("#character-photo-wrap").classList.add("hidden");return}
+  patchText("#character-name",visible?assignment.name:"••••••");patchText("#character-anime",visible?assignment.anime:"Secret");
   if(visible){$("#character-photo-wrap").classList.remove("hidden");setCharacterPhoto($("#character-photo"),assignment.name)}else $("#character-photo-wrap").classList.add("hidden");
 }
 
 window.addEventListener("beforeinstallprompt",e=>{e.preventDefault();installPrompt=e});
 function maybeOfferInstallOnce(){if(localStorage.getItem(INSTALL_SEEN_KEY)!=="1"&&!window.matchMedia?.("(display-mode: standalone)")?.matches)setTimeout(()=>$("#install-modal").classList.remove("hidden"),900)}
-async function installApp(){localStorage.setItem(INSTALL_SEEN_KEY,"1");$("#install-modal").classList.add("hidden");if(installPrompt){installPrompt.prompt();await installPrompt.userChoice;installPrompt=null}else toast("Installation","Menu â‹® â†’ Installer lâ€™application.")}
+async function installApp(){localStorage.setItem(INSTALL_SEEN_KEY,"1");$("#install-modal").classList.add("hidden");if(installPrompt){installPrompt.prompt();await installPrompt.userChoice;installPrompt=null}else toast("Installation","Menu ⋮ → Installer l’application.")}
 
 $("#lobby-back-btn")?.addEventListener("click",handleAppBack);
 $("#game-back-btn")?.addEventListener("click",handleAppBack);
 
-$("#create-room-btn").addEventListener("click",()=>createRoom().catch(e=>toast("CrÃ©ation impossible",e.message)));
+$("#create-room-btn").addEventListener("click",()=>createRoom().catch(e=>toast("Création impossible",e.message)));
 $("#solo-room-btn").addEventListener("click",()=>createRoom({solo:true}).catch(e=>toast("Mode solo impossible",e.message)));
 $("#join-room-btn").addEventListener("click",()=>joinRoom().catch(e=>toast("Connexion impossible",e.message)));
-$("#copy-code-btn").addEventListener("click",async()=>{await navigator.clipboard.writeText(currentRoom);toast("Code copiÃ©",currentRoom)});
+$("#copy-code-btn").addEventListener("click",async()=>{await navigator.clipboard.writeText(currentRoom);toast("Code copié",currentRoom)});
 $("#share-room-btn").addEventListener("click",async()=>{const t=`Rejoins ma salle Anime Imposteur : ${currentRoom}`;if(navigator.share)await navigator.share({title:"Anime Imposteur",text:t,url:location.href});else await navigator.clipboard.writeText(t+" "+location.href)});
 $("#start-game-btn").addEventListener("click",()=>startGame().catch(e=>toast("Erreur",e.message)));
 $("#next-game-btn").addEventListener("click",()=>startGame().catch(e=>toast("Erreur",e.message)));
@@ -1692,5 +1688,4 @@ window.addEventListener("pagehide",markOffline);
 
 const savedName=localStorage.getItem("imposteur_name");if(savedName)$("#home-name").value=savedName;
 renderAnimeGrid();refreshAiStatus();armAppHistory();initFirebase();
-if("serviceWorker" in navigator)window.addEventListener("load",async()=>{try{const r=await navigator.serviceWorker.register("./service-worker.js?v=8.4");r.update().catch(()=>{})}catch{}});
-
+if("serviceWorker" in navigator)window.addEventListener("load",async()=>{try{const r=await navigator.serviceWorker.register("./service-worker.js?v=8.4.1");r.update().catch(()=>{})}catch{}});
