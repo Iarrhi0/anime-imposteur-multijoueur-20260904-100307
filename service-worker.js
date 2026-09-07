@@ -1,11 +1,11 @@
-const CACHE="anime-imposteur-v8-3";
+﻿const CACHE="anime-imposteur-v8-4";
 const SHELL=[
   "./",
   "./index.html",
-  "./style.css?v=8.3",
-  "./app.js?v=8.3",
-  "./ai-engine.js?v=8.3",
-  "./bot-engine.js?v=8.3",
+  "./style.css?v=8.4",
+  "./app.js?v=8.4",
+  "./ai-engine.js?v=8.4",
+  "./bot-engine.js?v=8.4",
   "./manifest.webmanifest",
   "./icons/icon-192.png",
   "./icons/icon-512.png"
@@ -59,3 +59,4 @@ self.addEventListener("fetch",event=>{
     caches.match(event.request).then(cached=>cached||fetch(event.request))
   );
 });
+
