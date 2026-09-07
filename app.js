@@ -293,6 +293,12 @@ async function enterRoom(code){
     const prev=currentRoomData;currentRoomData=snap.data();
     const wasHost=isHost;isHost=currentRoomData.hostUid===currentUser.uid;
 
+    // V8.4.3 : les listeners hints diffèrent entre hôte et joueur.
+    // Si l'hôte change, on resynchronise la partie avec les bons listeners.
+    if(isHost!==wasHost && currentRoomData.gameNo){
+      subscribeGameData(currentRoomData.gameNo);
+    }
+
     if(isHost&&!wasHost){
       subscribeBotAssignments();
       startHostLease();
@@ -370,14 +376,112 @@ function subscribeGameData(gameNo){
   if(!gameNo)return;
   const {collection,onSnapshot,query,where}=fb.fsMod;
 
-  gameUnsubs.push(onSnapshot(query(collection(db,"rooms",currentRoom,"hints"),where("gameNo","==",gameNo)),snap=>{
-    const next=snap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(a.round-b.round)||(a.orderIndex-b.orderIndex)||(a.createdMs-b.createdMs));
-    if(collectionReady.hints){
-      for(const h of next)if(!lastHintIds.has(h.id)){if(activeTab!=="hints"){unreadHints++;renderBadges()}toast(h.playerName,h.revealed?`« ${h.word} »`:"Indice enregistré")}
-    }
-    hints=next;lastHintIds=new Set(next.map(x=>x.id));collectionReady.hints=true;scheduleRender();scheduleHostTick();
-  }));
+  // V8.4.3 — synchronisation des indices compatible avec les règles Firestore.
+  //
+  // Hôte :
+  //   peut lire toute la collection hints.
+  //
+  // Joueur normal :
+  //   1) écoute seulement revealed == true
+  //   2) écoute seulement ses propres indices
+  //   3) fusionne les deux listes localement.
+  //
+  // On évite ainsi la requête "tous les hints" qui était refusée par
+  // Firestore pour un non-hôte et donnait "Indices donnés : 0".
 
+  let publicHintDocs=[];
+  let ownHintDocs=[];
+
+  const applyHintDocs=()=>{
+    const merged=new Map();
+
+    for(const h of publicHintDocs){
+      if(h.gameNo===gameNo)merged.set(h.id,h);
+    }
+    for(const h of ownHintDocs){
+      if(h.gameNo===gameNo)merged.set(h.id,h);
+    }
+
+    const next=[...merged.values()].sort(
+      (a,b)=>
+        (a.round-b.round) ||
+        (a.orderIndex-b.orderIndex) ||
+        ((a.createdMs||0)-(b.createdMs||0))
+    );
+
+    if(collectionReady.hints){
+      for(const h of next){
+        if(!lastHintIds.has(h.id)){
+          if(activeTab!=="hints"){
+            unreadHints++;
+            renderBadges();
+          }
+          toast(
+            h.playerName,
+            h.revealed ? `« ${h.word} »` : "Indice enregistré"
+          );
+        }
+      }
+    }
+
+    hints=next;
+    lastHintIds=new Set(next.map(x=>x.id));
+    collectionReady.hints=true;
+    scheduleRender();
+    scheduleHostTick();
+  };
+
+  if(isHost){
+    gameUnsubs.push(
+      onSnapshot(
+        collection(db,"rooms",currentRoom,"hints"),
+        snap=>{
+          publicHintDocs=snap.docs.map(d=>({id:d.id,...d.data()}));
+          ownHintDocs=[];
+          applyHintDocs();
+        },
+        err=>{
+          console.error("Hints host sync",err);
+          toast("Indices","Synchronisation impossible.");
+        }
+      )
+    );
+  }else{
+    // Indices publics/révélés.
+    gameUnsubs.push(
+      onSnapshot(
+        query(
+          collection(db,"rooms",currentRoom,"hints"),
+          where("revealed","==",true)
+        ),
+        snap=>{
+          publicHintDocs=snap.docs.map(d=>({id:d.id,...d.data()}));
+          applyHintDocs();
+        },
+        err=>{
+          console.error("Hints public sync",err);
+          toast("Indices","Impossible de recevoir les indices.");
+        }
+      )
+    );
+
+    // Son propre indice, même lorsqu'il est encore caché.
+    gameUnsubs.push(
+      onSnapshot(
+        query(
+          collection(db,"rooms",currentRoom,"hints"),
+          where("playerId","==",currentUser.uid)
+        ),
+        snap=>{
+          ownHintDocs=snap.docs.map(d=>({id:d.id,...d.data()}));
+          applyHintDocs();
+        },
+        err=>{
+          console.error("Own hint sync",err);
+        }
+      )
+    );
+  }
   gameUnsubs.push(onSnapshot(query(collection(db,"rooms",currentRoom,"messages"),where("gameNo","==",gameNo)),snap=>{
     const next=snap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(a.createdMs||0)-(b.createdMs||0));
     const fresh=[];

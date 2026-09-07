@@ -1,4 +1,4 @@
-const CACHE="anime-imposteur-v8-4-2";
+const CACHE="anime-imposteur-v8-4-3";
 const SHELL=[
   "./style.css?v=8.4.2",
   "./app.js?v=8.4.2",
