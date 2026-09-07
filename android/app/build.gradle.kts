@@ -10,8 +10,8 @@ android {
         applicationId = "com.animeimposteur.app"
         minSdk = 24
         targetSdk = 35
-        versionCode = 85
-        versionName = "8.5"
+        versionCode = 851
+        versionName = "8.5.1"
 
         buildConfigField(
             "String",
