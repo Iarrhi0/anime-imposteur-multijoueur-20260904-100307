@@ -34,6 +34,32 @@ service cloud.firestore {
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['voteStage']);
     }
 
+    function canConfirmBotVote(roomId){
+      return member(roomId)
+        && rd(roomId).status == 'voting'
+        && rd(roomId).voteStage == 'confirming'
+        && resource.data.playerId.matches('^bot_.*')
+        && request.resource.data.playerId == resource.data.playerId
+        && request.resource.data.gameNo == rd(roomId).gameNo
+        && resource.data.submitted == true
+        && request.resource.data.submitted == true
+        && request.resource.data.confirmed == true
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['confirmed','updatedMs']);
+    }
+
+    function canConfirmBotStatus(roomId){
+      return member(roomId)
+        && rd(roomId).status == 'voting'
+        && rd(roomId).voteStage == 'confirming'
+        && resource.data.playerId.matches('^bot_.*')
+        && request.resource.data.playerId == resource.data.playerId
+        && request.resource.data.gameNo == rd(roomId).gameNo
+        && resource.data.submitted == true
+        && request.resource.data.submitted == true
+        && request.resource.data.confirmed == true
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['confirmed','updatedMs']);
+    }
+
     match /rooms/{roomId} {
       allow get: if signedIn();
       allow list: if false;
@@ -83,16 +109,24 @@ service cloud.firestore {
       }
       match /votes/{id} {
         allow read: if isHost(roomId) || (member(roomId) && resource.data.playerId == request.auth.uid);
-        allow create, update: if isHost(roomId) || (member(roomId)
+        allow create: if isHost(roomId) || (member(roomId)
           && request.resource.data.playerId == request.auth.uid
           && request.resource.data.gameNo == rd(roomId).gameNo);
+        allow update: if isHost(roomId) || (member(roomId)
+          && request.resource.data.playerId == request.auth.uid
+          && request.resource.data.gameNo == rd(roomId).gameNo)
+          || canConfirmBotVote(roomId);
         allow delete: if isHost(roomId);
       }
       match /voteStatus/{id} {
         allow read: if member(roomId);
-        allow create, update: if isHost(roomId) || (member(roomId)
+        allow create: if isHost(roomId) || (member(roomId)
           && request.resource.data.playerId == request.auth.uid
           && request.resource.data.gameNo == rd(roomId).gameNo);
+        allow update: if isHost(roomId) || (member(roomId)
+          && request.resource.data.playerId == request.auth.uid
+          && request.resource.data.gameNo == rd(roomId).gameNo)
+          || canConfirmBotStatus(roomId);
         allow delete: if isHost(roomId);
       }
     }

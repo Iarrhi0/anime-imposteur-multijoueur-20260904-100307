@@ -1,9 +1,9 @@
 import { firebaseConfig } from "./firebase-config.js";
-import { animeDB, chooseIntelligentPair, getAiStats } from "./ai-engine.js?v=8.2";
+import { animeDB, chooseIntelligentPair, getAiStats } from "./ai-engine.js?v=8.3";
 import {
   chooseAdaptiveBotHint, chooseBotVote, botVoteApproval,
   buildBotDiscussion, shouldBotReply, botReplyDelay, resetBotMemory
-} from "./bot-engine.js?v=8.2";
+} from "./bot-engine.js?v=8.3";
 
 const $=s=>document.querySelector(s);
 const $$=s=>[...document.querySelectorAll(s)];
@@ -44,6 +44,7 @@ let botVoteThinking=new Set();
 let botConfirmThinking=new Set();
 let botVoteWatchdogTimer=null;
 let botVoteTimers=new Map();
+let clientBotConfirming=new Set();
 const characterImageCache=new Map();
 const localSettings={mode:"auto",difficulty:"hard"};
 
@@ -92,6 +93,7 @@ function cleanupTimers(){
   botVoteTimers.clear();
   botVoteThinking.clear();
   botConfirmThinking.clear();
+  clientBotConfirming.clear();
   botMessageQueue=[];
   botQueueBusy=false;
 }
@@ -285,6 +287,12 @@ async function enterRoom(code){
 
     scheduleRender();scheduleHostTick();armVoteTimer();repairCorruptedRoster().catch(()=>{});
     if(
+      currentRoomData.status==="voting" &&
+      currentRoomData.voteStage==="confirming"
+    ){
+      clientGuaranteeBotConfirmations().catch(console.error);
+    }
+    if(
       isHost &&
       currentRoomData.status==="voting" &&
       currentRoomData.voteStage==="confirming"
@@ -355,6 +363,14 @@ function subscribeGameData(gameNo){
     collectionReady.voteStatus=true;
     scheduleRender();
     scheduleHostTick();
+
+    if(
+      currentRoomData?.status==="voting" &&
+      currentRoomData?.voteStage==="confirming"
+    ){
+      clientGuaranteeBotConfirmations().catch(console.error);
+    }
+
     if(isHost && currentRoomData?.status==="voting"){
       startBotVoteWatchdog();
 
@@ -971,6 +987,69 @@ async function ensureBotAssignment(botId){
   return {name:"Personnage inconnu"};
 }
 
+
+async function clientGuaranteeBotConfirmations(){
+  if(
+    !currentRoomData ||
+    currentRoomData.status!=="voting" ||
+    currentRoomData.voteStage!=="confirming"
+  )return;
+
+  const gameNo=currentRoomData.gameNo;
+  const voteRound=currentVoteRound();
+  const statuses=voteStatusMap();
+
+  const roomBots=(currentRoomData.roster||[])
+    .filter(p=>p.bot && voteVoterIds().includes(p.id));
+
+  for(const b of roomBots){
+    const s=statuses.get(b.id);
+
+    // On ne touche qu'à une IA qui a DEJA voté mais n'a pas confirmé.
+    if(!s?.submitted || s?.confirmed || clientBotConfirming.has(b.id))continue;
+
+    clientBotConfirming.add(b.id);
+
+    try{
+      await sleep(350+Math.floor(Math.random()*450));
+
+      if(
+        !currentRoomData ||
+        currentRoomData.status!=="voting" ||
+        currentRoomData.voteStage!=="confirming" ||
+        currentRoomData.gameNo!==gameNo ||
+        currentVoteRound()!==voteRound
+      )continue;
+
+      const id=`g${gameNo}_v${voteRound}_${b.id}`;
+      const voteRef=fb.fsMod.doc(db,"rooms",currentRoom,"votes",id);
+      const statusRef=fb.fsMod.doc(db,"rooms",currentRoom,"voteStatus",id);
+
+      // Le choix secret de l'IA n'est PAS modifié.
+      // On passe uniquement confirmed=false -> true.
+      await Promise.all([
+        fb.fsMod.setDoc(
+          voteRef,
+          {confirmed:true,updatedMs:now()},
+          {merge:true}
+        ),
+        fb.fsMod.setDoc(
+          statusRef,
+          {confirmed:true,updatedMs:now()},
+          {merge:true}
+        )
+      ]);
+
+      scheduleRender();
+      scheduleHostTick(30);
+    }catch(e){
+      console.error("CLIENT BOT CONFIRM FAILED",b.name,e);
+    }finally{
+      clientBotConfirming.delete(b.id);
+    }
+  }
+}
+
 async function guaranteeBotConfirmations(){
   if(
     !isHost ||
@@ -1571,4 +1650,4 @@ window.addEventListener("pagehide",markOffline);
 
 const savedName=localStorage.getItem("imposteur_name");if(savedName)$("#home-name").value=savedName;
 renderAnimeGrid();refreshAiStatus();armAppHistory();initFirebase();
-if("serviceWorker" in navigator)window.addEventListener("load",async()=>{try{const r=await navigator.serviceWorker.register("./service-worker.js?v=8.2");r.update().catch(()=>{})}catch{}});
+if("serviceWorker" in navigator)window.addEventListener("load",async()=>{try{const r=await navigator.serviceWorker.register("./service-worker.js?v=8.3");r.update().catch(()=>{})}catch{}});
