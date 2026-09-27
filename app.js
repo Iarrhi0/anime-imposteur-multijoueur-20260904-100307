@@ -1,9 +1,10 @@
 import { firebaseConfig } from "./firebase-config.js";
-import { animeDB, chooseIntelligentPair, getAiStats } from "./ai-engine.js?v=8.4.2";
+import { VoiceEngine } from "./voice-engine.js?v=8.6.0";
+import { animeDB, chooseIntelligentPair, getAiStats } from "./ai-engine.js?v=8.6.0";
 import {
   chooseAdaptiveBotHint, chooseBotVote, botVoteApproval,
   buildBotDiscussion, shouldBotReply, botReplyDelay, resetBotMemory
-} from "./bot-engine.js?v=8.4.2";
+} from "./bot-engine.js?v=8.6.0";
 
 const $=s=>document.querySelector(s);
 const $$=s=>[...document.querySelectorAll(s)];
@@ -28,6 +29,7 @@ let currentRoom=null,currentRoomData=null,isHost=false;
 let players=[],bots=[],assignment=null,botAssignments={};
 let hints=[],messages=[],voteApprovals=[],voteStatuses=[];
 let activeTab="hints",unreadHints=0,unreadChat=0;
+let discussionMode="text",voiceEngine=null;
 let installPrompt=null,leavingRoom=false,currentScreen="home";
 
 let roomUnsubs=[],gameUnsubs=[],botAssignmentsUnsub=null;
@@ -106,6 +108,8 @@ function cleanupListeners(){
 }
 function cleanupRoom(){
   cleanupTimers();cleanupListeners();
+  voiceEngine?.leave({silent:true}).catch(()=>{});
+  discussionMode="text";
   playersReady=false;botsReady=false;
   hints=[];messages=[];voteApprovals=[];voteStatuses=[];
   lastHintIds.clear();lastMessageIds.clear();
@@ -124,6 +128,8 @@ async function initFirebase(){
     const fsMod=await import("https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js");
     const app=appMod.initializeApp(firebaseConfig);
     auth=authMod.getAuth(app);db=fsMod.getFirestore(app);fb={authMod,fsMod};
+    voiceEngine=new VoiceEngine({onChange:()=>renderVoicePanel(),toast});
+    voiceEngine.setFirebase({db,fsMod});
     authMod.onAuthStateChanged(auth,async user=>{
       if(!user){try{await authMod.signInAnonymously(auth)}catch(e){toast("Firebase",e.message)};return}
       currentUser=user;$("#connection-dot").classList.add("online");
@@ -1404,7 +1410,7 @@ async function processBotQueue(){
 function renderAll(){
   if(!currentRoomData){show("home");return}
   renderRoomRole();routeByStatus();renderLobbyPlayers();renderGameHeader();renderGamePlayers();
-  renderHints();renderMessages();renderProposal();renderVoting();renderScores();renderBadges();
+  renderHints();renderMessages();renderVoicePanel();renderProposal();renderVoting();renderScores();renderBadges();
   if(currentRoomData.status==="postvote")renderResult();
 }
 function routeByStatus(){
@@ -1491,6 +1497,49 @@ function renderMessages(){
   const near=list.scrollHeight-list.scrollTop-list.clientHeight<90;
   list.innerHTML=data.map(m=>`<div class="message ${m.playerId===currentUser.uid?"me":""}"><div class="who">${esc(m.playerName)}</div><div class="body">${esc(m.text)}</div></div>`).join("");
   list.__key=key;if(near||!list.__done){list.scrollTop=list.scrollHeight;list.__done=true}
+}
+
+function renderVoicePanel(){
+  const textMode=discussionMode==="text";
+  $("#text-discussion-panel")?.classList.toggle("hidden",!textMode);
+  $("#voice-discussion-panel")?.classList.toggle("hidden",textMode);
+  $("[data-discussion-mode]").forEach(b=>b.classList.toggle("active",b.dataset.discussionMode===discussionMode));
+
+  if(!voiceEngine)return;
+  const s=voiceEngine.getState();
+  const join=$("#voice-join-btn"),controls=$("#voice-controls"),mute=$("#voice-mute-btn");
+  if(join){
+    join.classList.toggle("hidden",s.joined);
+    join.disabled=s.joining;
+    join.textContent=s.joining?"Connexion au micro…":"🎙 Rejoindre le vocal";
+  }
+  controls?.classList.toggle("hidden",!s.joined);
+  if(mute)mute.textContent=s.muted?"🎙 Réactiver le micro":"🔇 Couper le micro";
+
+  const mode=s.hasTurn?"P2P + TURN":"P2P / STUN";
+  patchText(
+    "#voice-status",
+    s.joining
+      ?"Demande d’accès au microphone…"
+      :s.joined
+        ?`Connecté • ${s.members.length} participant${s.members.length>1?"s":""} • ${mode}`
+        :"Rejoins le salon vocal de cette salle."
+  );
+
+  const states=new Map(s.peerStates.map(x=>[x.uid,x.state]));
+  patchHTML(
+    "#voice-members",
+    s.members.map(m=>{
+      const mine=m.uid===currentUser?.uid;
+      const st=states.get(m.uid);
+      const detail=mine?"Toi":st==="connected"?"Audio connecté":st?"Connexion…":"Dans le vocal";
+      return `<div class="voice-member">
+        <div class="voice-avatar">${esc((m.name||"?")[0].toUpperCase())}</div>
+        <div class="voice-member-copy"><strong>${esc(m.name||"Joueur")}</strong><small>${detail}</small></div>
+        <span class="voice-mic-state ${m.muted?"muted":""}">${m.muted?"🔇":"🎙"}</span>
+      </div>`;
+    }).join("") || `<div class="voice-empty">Personne n’est encore dans le vocal.</div>`
+  );
 }
 function renderProposal(){
   const p=currentRoomData.voteProposal;if(!p||currentRoomData.status!=="playing")return;
@@ -1616,7 +1665,7 @@ function renderScores(){patchHTML("#score-list",participants().sort((a,b)=>(b.sc
 function renderBadges(){patchText("#hints-badge",unreadHints);$("#hints-badge").classList.toggle("hidden",!unreadHints);patchText("#chat-badge",unreadChat);$("#chat-badge").classList.toggle("hidden",!unreadChat)}
 function setGameTab(tab){
   activeTab=tab;if(tab==="hints")unreadHints=0;else unreadChat=0;
-  $$("[data-game-tab]").forEach(b=>b.classList.toggle("active",b.dataset.gameTab===tab));
+  $("[data-game-tab]").forEach(b=>b.classList.toggle("active",b.dataset.gameTab===tab));
   renderBadges();scheduleRender();
 }
 
@@ -1766,6 +1815,26 @@ $("#next-game-btn").addEventListener("click",()=>startGame().catch(e=>toast("Err
 $("#send-hint-btn").addEventListener("click",()=>sendHint().catch(e=>toast("Erreur",e.message)));
 $("#hint-input").addEventListener("keydown",e=>{if(e.key==="Enter")$("#send-hint-btn").click()});
 $("#send-chat-btn").addEventListener("click",()=>{const t=$("#chat-input").value;$("#chat-input").value="";sendMessage(t).catch(e=>toast("Erreur",e.message))});
+$("[data-discussion-mode]").forEach(b=>b.addEventListener("click",()=>{
+  discussionMode=b.dataset.discussionMode;
+  renderVoicePanel();
+}));
+$("#voice-join-btn")?.addEventListener("click",async()=>{
+  try{
+    const me=participantById(currentUser?.uid);
+    await voiceEngine.join({
+      roomId:currentRoom,
+      uid:currentUser.uid,
+      name:me?.name||safeName($("#home-name").value)
+    });
+    toast("Vocal","Micro connecté.");
+  }catch(e){
+    const denied=e?.name==="NotAllowedError"||String(e?.message||"").toLowerCase().includes("permission");
+    toast("Vocal impossible",denied?"Autorise le microphone dans l’application.":e.message);
+  }
+});
+$("#voice-mute-btn")?.addEventListener("click",()=>voiceEngine?.toggleMute().catch(e=>toast("Vocal",e.message)));
+$("#voice-leave-btn")?.addEventListener("click",()=>voiceEngine?.leave().catch(()=>{}));
 $("#chat-input").addEventListener("keydown",e=>{if(e.key==="Enter")$("#send-chat-btn").click()});
 $("#propose-vote-btn").addEventListener("click",()=>proposeVote().catch(e=>toast("Erreur",e.message)));
 $("#submit-vote-btn").addEventListener("click",async()=>{const id=$("#vote-choices").dataset.selectedId;if(!id)return toast("Choisis un joueur");await writeMyVote(id);scheduleRender()});
@@ -1799,12 +1868,12 @@ if("serviceWorker" in navigator){
       const keys=await caches.keys();
       await Promise.all(
         keys
-          .filter(k=>k.startsWith("anime-imposteur-") && k!=="anime-imposteur-v8-4-2")
+          .filter(k=>k.startsWith("anime-imposteur-") && k!=="anime-imposteur-v8-6-0")
           .map(k=>caches.delete(k))
       );
 
       const reg=await navigator.serviceWorker.register(
-        "./service-worker.js?v=8.4.2",
+        "./service-worker.js?v=8.6.0",
         {updateViaCache:"none"}
       );
       await reg.update().catch(()=>{});
