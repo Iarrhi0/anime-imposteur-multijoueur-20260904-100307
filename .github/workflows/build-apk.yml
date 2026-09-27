@@ -1,0 +1,42 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.10.2"
+
+      - name: Build APK
+        run: gradle -p android/android :app:assembleDebug
+
+      - name: Rename APK
+        run: cp android/android/app/build/outputs/apk/debug/app-debug.apk Anime-Imposteur-8.6.0.apk
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Anime-Imposteur-8.6.0
+          path: Anime-Imposteur-8.6.0.apk
+          if-no-files-found: error
