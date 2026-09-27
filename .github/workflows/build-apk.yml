@@ -50,5 +50,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Anime-Imposteur-8.6.1
-          path: Anime-Imposteur-8.6.0.apk
+          path: Anime-Imposteur-8.6.1.apk
           if-no-files-found: error
