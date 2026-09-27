@@ -4,7 +4,7 @@ compatibility_date = "2026-09-01"
 
 [vars]
 APP_ORIGIN = "https://iarrhi0.github.io"
-FIREBASE_API_KEY = "REPLACE_WITH_FIREBASE_WEB_API_KEY"
+FIREBASE_API_KEY = "AIzaSyDcA_rm7gxxBz4Xd3j1edsbzrR6FxyCFEs"
 
 # Secrets to set with Wrangler, never commit their values:
 # wrangler secret put TURN_KEY_ID
