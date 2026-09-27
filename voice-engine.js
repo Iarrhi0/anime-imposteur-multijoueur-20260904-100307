@@ -60,12 +60,12 @@ export class VoiceEngine {
     try{this.onChange(this.getState())}catch{}
   }
 
-  async loadIceServers(){
+  async loadIceServers(authToken=""){
     this.iceServers=[...STUN_SERVERS];
     const url=String(voiceConfig.turnCredentialsUrl||"").trim();
     if(!url)return;
     try{
-      const r=await fetch(url,{cache:"no-store",credentials:"omit"});
+      const r=await fetch(url,{cache:"no-store",credentials:"omit",headers:authToken?{Authorization:`Bearer ${authToken}`}:{}});
       if(!r.ok)throw new Error(`TURN HTTP ${r.status}`);
       const d=await r.json();
       const extra=Array.isArray(d)?d:(d.iceServers||d.ice_servers||[]);
@@ -76,7 +76,7 @@ export class VoiceEngine {
     }
   }
 
-  async join({roomId,uid,name}){
+  async join({roomId,uid,name,authToken=""}){
     if(this.joined||this.joining)return;
     if(!this.db||!this.fs)throw new Error("Firebase vocal non initialisé.");
     if(!roomId||!uid)throw new Error("Salle vocale indisponible.");
@@ -90,7 +90,7 @@ export class VoiceEngine {
     this.emit();
 
     try{
-      await this.loadIceServers();
+      await this.loadIceServers(authToken);
 
       this.stream=await navigator.mediaDevices.getUserMedia({
         audio:{
