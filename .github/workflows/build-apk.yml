@@ -28,15 +28,27 @@ jobs:
         with:
           gradle-version: "8.10.2"
 
+      - name: Check Agora configuration
+        env:
+          AGORA_APP_ID: ${{ secrets.AGORA_APP_ID }}
+        run: |
+          if [ -z "$AGORA_APP_ID" ]; then
+            echo "::warning::AGORA_APP_ID is not configured. APK will build, but voice join stays disabled."
+          else
+            echo "Agora Voice configuration detected."
+          fi
+
       - name: Build APK
+        env:
+          AGORA_APP_ID: ${{ secrets.AGORA_APP_ID }}
         run: gradle -p android/android :app:assembleDebug
 
       - name: Rename APK
-        run: cp android/android/app/build/outputs/apk/debug/app-debug.apk Anime-Imposteur-8.6.0.apk
+        run: cp android/android/app/build/outputs/apk/debug/app-debug.apk Anime-Imposteur-8.6.1.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Anime-Imposteur-8.6.0
+          name: Anime-Imposteur-8.6.1
           path: Anime-Imposteur-8.6.0.apk
           if-no-files-found: error
