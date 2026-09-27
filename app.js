@@ -489,12 +489,17 @@ function subscribeGameData(gameNo){
     );
   }
   gameUnsubs.push(onSnapshot(query(collection(db,"rooms",currentRoom,"messages"),where("gameNo","==",gameNo)),snap=>{
-    const next=snap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(a.createdMs||0)-(b.createdMs||0));
+    const all=snap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(a.createdMs||0)-(b.createdMs||0));
+    const signals=all.filter(m=>m.kind==="voice-signal");
+    signals.forEach(m=>voiceEngine?.consumeSignal(m));
+
+    const next=all.filter(m=>m.kind!=="voice-signal");
     const fresh=[];
     if(collectionReady.messages){
       for(const m of next){
         if(!lastMessageIds.has(m.id)&&m.playerId!==currentUser.uid){
-          if(activeTab!=="chat"){unreadChat++;renderBadges()}toast(m.playerName,m.text.slice(0,48));
+          if(activeTab!=="chat"){unreadChat++;renderBadges()}
+          toast(m.playerName,String(m.text||"").slice(0,48));
         }
         if(!lastMessageIds.has(m.id)&&!String(m.playerId).startsWith("bot_"))fresh.push(m);
       }
@@ -1409,6 +1414,8 @@ async function processBotQueue(){
 
 function renderAll(){
   if(!currentRoomData){show("home");return}
+  voiceEngine?.setGameNo(currentRoomData.gameNo||0);
+  voiceEngine?.updateMembers(players);
   renderRoomRole();routeByStatus();renderLobbyPlayers();renderGameHeader();renderGamePlayers();
   renderHints();renderMessages();renderVoicePanel();renderProposal();renderVoting();renderScores();renderBadges();
   if(currentRoomData.status==="postvote")renderResult();
@@ -1827,8 +1834,11 @@ $("#voice-join-btn")?.addEventListener("click",async()=>{
       roomId:currentRoom,
       uid:currentUser.uid,
       name:me?.name||safeName($("#home-name").value),
-      authToken
+      authToken,
+      gameNo:currentRoomData?.gameNo||0,
+      knownPlayers:players
     });
+    voiceEngine.updateMembers(players);
     toast("Vocal","Micro connecté.");
   }catch(e){
     const denied=e?.name==="NotAllowedError"||String(e?.message||"").toLowerCase().includes("permission");
