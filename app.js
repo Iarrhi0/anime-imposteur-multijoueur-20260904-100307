@@ -1822,10 +1822,12 @@ $("[data-discussion-mode]").forEach(b=>b.addEventListener("click",()=>{
 $("#voice-join-btn")?.addEventListener("click",async()=>{
   try{
     const me=participantById(currentUser?.uid);
+    const authToken=await currentUser.getIdToken();
     await voiceEngine.join({
       roomId:currentRoom,
       uid:currentUser.uid,
-      name:me?.name||safeName($("#home-name").value)
+      name:me?.name||safeName($("#home-name").value),
+      authToken
     });
     toast("Vocal","Micro connecté.");
   }catch(e){
