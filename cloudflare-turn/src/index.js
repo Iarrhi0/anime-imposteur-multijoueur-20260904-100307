@@ -52,7 +52,7 @@ export default {
           "Authorization":`Bearer ${env.TURN_KEY_API_TOKEN}`,
           "Content-Type":"application/json"
         },
-        body:JSON.stringify({ttl:3600,customIdentifier:uid})
+        body:JSON.stringify({ttl:3600})
       }
     );
 
