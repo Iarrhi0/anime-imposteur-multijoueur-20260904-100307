@@ -12,7 +12,7 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icons/icon-192.png">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
-  <link rel="stylesheet" href="style.css?v=8.4.2">
+  <link rel="stylesheet" href="style.css?v=8.6.0">
 </head>
 <body>
   <div id="toast-layer" class="toast-layer"></div>
@@ -24,7 +24,7 @@
         <h1>Anime Imposteur</h1>
         <p>Multijoueur à distance • IA • installable</p>
       </div>
-      <div class="brand-build">v8.4.3</div><div id="connection-dot" class="connection-dot"></div>
+      <div class="brand-build">v8.6.0</div><div id="connection-dot" class="connection-dot"></div>
     </header>
 
     <div id="fatal-config" class="fatal hidden"></div>
@@ -253,22 +253,58 @@
       </section>
 
       <section id="game-chat-panel" class="hidden discussion-panel mobile-panel">
-        <div class="message-header">
+        <div class="message-header discussion-header">
           <div>
-            <strong>💬 Messages</strong>
-            <small>Disponible pendant les indices, le vote et après le résultat.</small>
+            <strong>Discussion</strong>
+            <small>Choisis écrit ou vocal sans quitter la partie.</small>
           </div>
         </div>
 
-        <div id="chat-list" class="chat-list"></div>
+        <div class="discussion-mode-switch" role="tablist" aria-label="Mode de discussion">
+          <button class="discussion-mode-btn active" data-discussion-mode="text" type="button">💬 Écrit</button>
+          <button class="discussion-mode-btn" data-discussion-mode="voice" type="button">🎙 Vocal</button>
+        </div>
 
-        <div id="chat-composer" class="chat-composer">
-          <div class="chat-input-wrap">
-            <span class="chat-input-icon">💬</span>
-            <input id="chat-input" maxlength="300" enterkeyhint="send"
-                   placeholder="Écris un message…">
+        <div id="text-discussion-panel">
+          <div id="chat-list" class="chat-list"></div>
+
+          <div id="chat-composer" class="chat-composer">
+            <div class="chat-input-wrap">
+              <span class="chat-input-icon">💬</span>
+              <input id="chat-input" maxlength="300" enterkeyhint="send"
+                     placeholder="Écris un message…">
+            </div>
+            <button id="send-chat-btn" class="send-icon-btn" aria-label="Envoyer le message">➤</button>
           </div>
-          <button id="send-chat-btn" class="send-icon-btn" aria-label="Envoyer le message">➤</button>
+        </div>
+
+        <div id="voice-discussion-panel" class="voice-panel hidden">
+          <div class="voice-hero">
+            <div class="voice-orb">🎙</div>
+            <div>
+              <strong>Salon vocal de la salle</strong>
+              <small id="voice-status">Rejoins le salon vocal de cette salle.</small>
+            </div>
+          </div>
+
+          <button id="voice-join-btn" class="btn primary voice-join-btn" type="button">🎙 Rejoindre le vocal</button>
+
+          <div id="voice-controls" class="voice-controls hidden">
+            <button id="voice-mute-btn" class="voice-control-btn" type="button">🔇 Couper le micro</button>
+            <button id="voice-leave-btn" class="voice-control-btn danger" type="button">🚪 Quitter le vocal</button>
+          </div>
+
+          <div class="voice-list-head">
+            <strong>Participants vocaux</strong>
+            <small>Maximum 6 joueurs</small>
+          </div>
+          <div id="voice-members" class="voice-members">
+            <div class="voice-empty">Personne n’est encore dans le vocal.</div>
+          </div>
+
+          <div class="voice-note">
+            L’audio passe directement entre les joueurs quand le réseau le permet. Le micro peut être coupé à tout moment.
+          </div>
         </div>
       </section>
 
@@ -366,6 +402,6 @@
     </div>
   </main>
 
-  <script type="module" src="app.js?v=8.4.2"></script>
+  <script type="module" src="app.js?v=8.6.0"></script>
 </body>
 </html>
