@@ -84,20 +84,6 @@ service cloud.firestore {
         allow read, write: if isHost(roomId);
       }
 
-      match /partyAssignments/{playerId} {
-        allow read: if signedIn() && (request.auth.uid == playerId || isHost(roomId));
-        allow create, update, delete: if isHost(roomId);
-      }
-
-      match /partyVotes/{playerId} {
-        allow read: if member(roomId) || isHost(roomId);
-        allow create, update: if member(roomId)
-          && request.auth.uid == playerId
-          && request.resource.data.playerId == request.auth.uid
-          && request.resource.data.sessionId == rd(roomId).partySession.id;
-        allow delete: if isHost(roomId) || (signedIn() && request.auth.uid == playerId);
-      }
-
       match /secrets/{id} {
         allow read, write: if isHost(roomId);
       }
