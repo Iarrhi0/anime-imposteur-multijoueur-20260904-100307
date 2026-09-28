@@ -1,4 +1,4 @@
-import { voiceConfig } from "./voice-config.js?v=8.6.0";
+import { voiceConfig } from "./voice-config.js?v=8.6.2";
 
 const STUN_SERVERS = [
   { urls: ["stun:stun.cloudflare.com:3478", "stun:stun.cloudflare.com:53"] },
@@ -173,7 +173,15 @@ export class VoiceEngine {
     if(this.processedSignals.size>600){
       this.processedSignals=new Set([...this.processedSignals].slice(-300));
     }
-    this.handleSignal(signal).catch(e=>console.warn("voice signal",e));
+    this.handleSignal(signal)
+      .catch(e=>console.warn("voice signal",e))
+      .finally(()=>{
+        if(signal.to===this.uid && this.db && this.fs && this.roomId){
+          this.fs.deleteDoc(
+            this.fs.doc(this.db,"rooms",this.roomId,"messages",signal.id)
+          ).catch(()=>{});
+        }
+      });
   }
 
   async syncPeers(){
