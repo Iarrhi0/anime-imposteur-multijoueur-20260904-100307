@@ -225,7 +225,6 @@ function think(v: GrView, mind: AgentMind, api: AgentAPI) {
   const opp = v.duo.find((id) => id !== me)!;
   const oppLeft = v.oppRemaining[opp] ?? 24;
   const gamble = (oppLeft <= 1 && cands.length <= 3) || (api.difficulty === 'facile' && cands.length === 2 && api.rng.chance(0.5));
-  if ((globalThis as any).__DV_DEBUG) console.log('grille-ai', me, 'cands', cands.map((c) => c.name).join(','), 'oppLeft', oppLeft);
   if (cands.length === 1 || (cands.length && gamble)) {
     if (cands.length > 1 && aiChance(api, 0.6)) aiSay(api, mem, pickLine(api, ['Tant pis, je tente le tout pour le tout !', 'Quitte ou double…']), 1);
     return api.act({ type: 'guess', name: api.rng.pick(cands).name });

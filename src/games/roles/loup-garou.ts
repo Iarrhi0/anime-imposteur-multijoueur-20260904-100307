@@ -1,13 +1,33 @@
 // 🐺 Loup-Garou : cycle nuit / jour, rôles secrets, le présentateur est l'application.
 import type { AgentAPI, AgentMind, AIStrategy, GameAction, GameModule, RuntimeCtx } from '../../core/types';
 import { joinNames, norm } from '../../core/text';
-import { line, personality, type Personality } from '../../ai/personalities';
+import { line as rawLine, personality, type LineKind, type Personality } from '../../ai/personalities';
+import type { Rng } from '../../core/rng';
 import { activeIds, aiMem, initScores, nameOf, newChat, secs, stable01 } from '../kit';
 import { LoupGarouBoard } from './LoupGarouBoard';
 import { LG_ROLE, type LGMe, type LGRole, type LGState, type LGView } from './lg-types';
 
 export { LG_ROLE };
 export type { LGRole, LGState, LGView };
+
+
+// Les répliques génériques des personnalités parlent parfois d'« indice » ou de « mot » (jeux d'imposteur) : on les adapte au village.
+const OFF_TOPIC = /indice|\bmot\b|imposteur|undercover/i;
+const LG_LINES: Partial<Record<LineKind, string[]>> = {
+  accuse: ['Je pense que {name} est un loup.', '{name}, tu joues le loup à fond.', 'Moi je vote {name}.'],
+  suspect: ['{name} me paraît louche…', 'Je garde un œil sur {name}.', '{name} est trop discret, ça cache quelque chose.'],
+  defend: ['Ce n’est pas moi, je vous jure !', 'Je suis du côté du village.', 'Pourquoi moi ? Regardez plutôt les autres.'],
+  bluff: ['Je suis un simple villageois, rien à cacher.', 'Franchement, je suis clean.']
+};
+function line(P: Personality, kind: LineKind, rng: Rng, vars: Record<string, string> = {}): string {
+  for (let i = 0; i < 6; i++) {
+    const l = rawLine(P, kind, rng, vars);
+    if (!OFF_TOPIC.test(l)) return l;
+  }
+  let t = rng.pick(LG_LINES[kind] ?? ['Hmm…']);
+  for (const [k, v] of Object.entries(vars)) t = t.split(`{${k}}`).join(v);
+  return t;
+}
 
 // ---------- Mise en place ----------
 
@@ -370,8 +390,10 @@ interface LGMem {
   said: number;
   talkAt: number;
   actAt: number;
+  phaseStart: number;
   pending: { kind: 'defend' | 'mentioned' | 'agree'; who: string; about?: string }[];
   revealed: string[];
+  heard: string[];
   historySeen: number;
   deathsSeen: number;
   endSaid: boolean;
@@ -393,8 +415,10 @@ function think(v: LGView, mind: AgentMind, api: AgentAPI) {
     said: 0,
     talkAt: 0,
     actAt: 0,
+    phaseStart: 0,
     pending: [],
     revealed: [],
+    heard: [],
     historySeen: 0,
     deathsSeen: 0,
     endSaid: false,
@@ -407,6 +431,7 @@ function think(v: LGView, mind: AgentMind, api: AgentAPI) {
   if (mem.key !== key) {
     mem.key = key;
     mem.said = 0;
+    mem.phaseStart = api.now;
     mem.actAt = api.now + 1500 + api.rng.int(0, 4000);
     mem.talkAt = api.now + 1500 + api.rng.int(0, 5000) * (1.3 - P.talk);
   }
@@ -455,8 +480,8 @@ function think(v: LGView, mind: AgentMind, api: AgentAPI) {
     case 'vote': {
       if (!v.me.alive || v.voted.includes(me) || api.now < mem.actAt) return;
       const t = chooseVote(v, mem, api, P, wolfSide, myWolves);
-      api.act({ type: 'vote', target: t });
       if (t !== 'personne' && api.rng.chance(P.talk * 0.35)) api.say(line(P, 'accuse', api.rng, { name: nameOf(api, t) }));
+      api.act({ type: 'vote', target: t });
       return;
     }
     case 'end': {
@@ -529,7 +554,11 @@ function readChat(v: LGView, mem: LGMem, mind: AgentMind, api: AgentAPI, P: Pers
       if (accuse) {
         (mem.accused[from] ??= []).includes(t) || mem.accused[from].push(t);
         const trustClaim = claim && v.me?.role !== 'voyante' ? 1.2 : 0;
-        bump(mem, t, 0.15 + 0.35 * P.follow + trustClaim - (mem.sus[from] ?? 0) * 0.1);
+        // Chaque joueur ne pèse qu'un peu par accusation (évite l'effet boule de neige sans preuve)
+        const k = `${from}>${t}@${v.day}`;
+        const already = mem.heard.includes(k);
+        if (!already) mem.heard.push(k);
+        bump(mem, t, (already ? 0.03 : 0.1 + 0.25 * P.follow) + trustClaim - Math.max(0, mem.sus[from] ?? 0) * 0.1);
         // Accuser quelqu'un que je sais innocent → suspect
         if (mem.clean.includes(t) && from !== me) bump(mem, from, 0.5);
         if (mem.wolves.includes(t)) bump(mem, from, -0.4);
@@ -539,7 +568,9 @@ function readChat(v: LGView, mem: LGMem, mind: AgentMind, api: AgentAPI, P: Pers
         if (mem.wolves.includes(t) && !v.me?.wolves?.includes(t)) bump(mem, from, 0.6);
       }
     }
-    if (h.toMe) mem.pending.push({ kind: accuse ? 'defend' : 'mentioned', who: from });
+    const isReply = /^(oui|tu me parles|je t ecoute)/.test(h.text);
+    if (h.toMe && accuse) mem.pending.push({ kind: 'defend', who: from });
+    else if (h.toMe && !isReply && /\?/.test(h.msg.text) && api.rng.chance(0.4 + P.talk * 0.4)) mem.pending.push({ kind: 'mentioned', who: from });
     else if (accuse && h.mentions.length && api.rng.chance(P.follow * 0.4)) mem.pending.push({ kind: 'agree', who: from, about: h.mentions[0] });
   }
   if (mem.pending.length > 3) mem.pending.splice(0, mem.pending.length - 3);
@@ -573,9 +604,12 @@ function discuss(v: LGView, mem: LGMem, api: AgentAPI, P: Personality, wolfSide:
   const me = api.me.id;
   if (!v.me?.alive) return;
   if (api.now < mem.talkAt) return;
+  // Laisse le temps aux humains de lire et de parler avant de se déclarer prêt.
+  const daySec = Number(api.options.daySec ?? 120) * 1000;
+  const mayReady = api.now - mem.phaseStart > Math.min(45_000, daySec * 0.4);
   const maxMsgs = 1 + Math.round(P.talk * 3);
   if (mem.said >= maxMsgs + mem.pending.length) {
-    if (!v.ready.includes(me) && api.rng.chance(0.3)) api.act({ type: 'ready' });
+    if (mayReady && !v.ready.includes(me) && api.rng.chance(0.3)) api.act({ type: 'ready' });
     return;
   }
   const msg = compose(v, mem, api, P, wolfSide, wolves);
@@ -583,7 +617,7 @@ function discuss(v: LGView, mem: LGMem, api: AgentAPI, P: Personality, wolfSide:
   if (msg) {
     mem.said++;
     api.say(msg);
-  } else if (!v.ready.includes(me) && api.rng.chance(0.4)) api.act({ type: 'ready' });
+  } else if (mayReady && !v.ready.includes(me) && api.rng.chance(0.4)) api.act({ type: 'ready' });
 }
 
 function compose(v: LGView, mem: LGMem, api: AgentAPI, P: Personality, wolfSide: boolean, wolves: string[]): string | null {
@@ -603,7 +637,10 @@ function compose(v: LGView, mem: LGMem, api: AgentAPI, P: Personality, wolfSide:
     if (pend.kind === 'defend') {
       if (role === 'bouffon') return rng.pick(['Moi ? Peut-être… ou peut-être pas 😏', 'Allez-y, votez pour moi si vous êtes si sûrs !', 'Hmm, vous avez peut-être raison… 🙃']);
       const counter = wolfSide ? scapegoat() : suspects[0];
-      const base = rng.pick([line(P, 'defend', rng), 'Je suis villageois, je vous jure !', 'Pas moi, je suis du côté du village.']);
+      const base =
+        role === 'voyante' && mem.revealed.length
+          ? rng.pick(['Je suis le Détective, je vous l’ai dit ! Écoutez-moi.', 'Si vous m’éliminez, vous perdez votre Détective…'])
+          : rng.pick([line(P, 'defend', rng), 'Je suis villageois, je vous jure !', 'Pas moi, je suis du côté du village.']);
       return counter && rng.chance(P.aggro) ? `${base} ${line(P, 'suspect', rng, { name: nm(counter) })}` : base;
     }
     if (pend.kind === 'mentioned') {

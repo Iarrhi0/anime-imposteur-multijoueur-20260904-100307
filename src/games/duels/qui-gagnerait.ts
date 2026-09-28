@@ -1,4 +1,5 @@
 // ⚔️ Qui gagnerait ? Deux éléments proches s'affrontent, le groupe vote.
+import { joinNames } from '../../core/text';
 import type { AgentMind, AIStrategy, BaseState, BaseView, GameAction, GameModule, RuntimeCtx } from '../../core/types';
 import { line, personality } from '../../ai/personalities';
 import { activeIds, aiMem, initScores, nameOf, newChat, secs, type ItemRef } from '../kit';
@@ -103,7 +104,7 @@ function endGame(s: QGState, ctx: RuntimeCtx) {
   const best = Math.max(0, ...s.active.map((id) => s.scores[id] ?? 0));
   s.winners = best > 0 ? s.active.filter((id) => s.scores[id] === best) : [];
   const split = s.rounds.filter((r) => r.winner === 'tie').length;
-  s.summary = `${s.winners.map((id) => nameOf(ctx, id)).join(' et ') || 'Personne'} pense${s.winners.length > 1 ? 'nt' : ''} le plus comme le groupe (${best} pts).${split ? ` ${split} duel${split > 1 ? 's' : ''} à égalité !` : ''}`;
+  s.summary = `${joinNames(s.winners.map((id) => nameOf(ctx, id))) || 'Personne'} pense${s.winners.length > 1 ? 'nt' : ''} le plus comme le groupe (${best} pts).${split ? ` ${split} duel${split > 1 ? 's' : ''} à égalité !` : ''}`;
   ctx.announce(s.summary);
 }
 

@@ -256,9 +256,11 @@ function candidateWords(it: ItemRef): string[] {
   const nameWords = new Set([it.name, ...(it.aliases ?? [])].flatMap((x) => keywords(x)));
   const words = new Set<string>();
   for (const t of it.tags) {
-    for (const w of t.split('-')) if (w.length >= 3 && keywords(w).length && !nameWords.has(keywords(w)[0])) words.add(w);
+    // mot le plus parlant du tag (« amerique-du-nord » → « amerique »), sans les nombres seuls
+    const parts = t.split('-').filter((w) => w.length >= 3 && !/^\d+$/.test(w) && keywords(w).length && !nameWords.has(keywords(w)[0]));
+    const best = parts.sort((a, b) => b.length - a.length)[0];
+    if (best) words.add(best);
   }
-  if (it.group) for (const w of it.group.split(/\s+/)) if (w.length >= 4 && !nameWords.has(keywords(w)[0] ?? '')) words.add(w);
   return [...words].filter((w) => !forbidden(w, it));
 }
 
@@ -285,8 +287,12 @@ const ai: AIStrategy<USView> = {
       if (words.length) {
         // Mots « spécifiques » (peu d'éléments du pack les partagent) : les IA ont tendance à choisir les mêmes → doublons réalistes
         const spec = (w: string) => pool.filter((i) => i.tags.some((t) => t.split('-').includes(w))).length || 1;
-        const ranked = words.map((w) => ({ w, s: spec(w) + stable01(me + w) * (api.difficulty === 'difficile' ? 3 : 1.5) })).sort((a, b) => a.s - b.s);
-        const top = ranked.slice(0, api.difficulty === 'facile' ? 5 : 3);
+        // Chaque IA a ses associations d'idées (bruit stable) ; en difficile elle évite le mot le plus évident, souvent pris par les autres.
+        const flair = { facile: 2, normal: 3.5, difficile: 5 }[api.difficulty];
+        const ranked = words.map((w) => ({ w, s: spec(w) + stable01(me + w) * flair })).sort((a, b) => a.s - b.s);
+        const obvious = words.slice().sort((a, b) => spec(a) - spec(b))[0];
+        const pool2 = api.difficulty === 'difficile' && ranked.length > 2 ? ranked.filter((x) => x.w !== obvious) : ranked;
+        const top = pool2.slice(0, Math.max(2, Math.ceil(pool2.length * 0.4)));
         word = api.rng.pick(top).w;
       } else {
         const clueWords = it.clues.flatMap((c) => c.split(/[\s,.'’]+/)).filter((w) => w.length >= 5 && !forbidden(w, it));

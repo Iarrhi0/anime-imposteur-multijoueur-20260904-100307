@@ -1,4 +1,5 @@
 // 🏆 Tier list : le groupe classe des éléments de S à D, un par un.
+import { joinNames } from '../../core/text';
 import type { AgentMind, AIStrategy, BaseState, BaseView, GameAction, GameModule, RuntimeCtx } from '../../core/types';
 import { line, personality } from '../../ai/personalities';
 import { activeIds, aiMem, initScores, nameOf, newChat, secs, type ItemRef } from '../kit';
@@ -110,7 +111,7 @@ function endGame(s: TLState, ctx: RuntimeCtx) {
   const best = Math.max(0, ...s.active.map((id) => s.scores[id] ?? 0));
   s.winners = best > 0 ? s.active.filter((id) => s.scores[id] === best) : [];
   const top = s.items.map((it, i) => ({ it, a: s.avgs[i] ?? 0 })).sort((a, b) => b.a - a.a)[0];
-  s.summary = `Tier list terminée ! ${top ? `Numéro 1 du groupe : ${top.it.name} ${top.it.emoji.split(' ')[0]}. ` : ''}${s.winners.map((id) => nameOf(ctx, id)).join(' et ') || 'Personne'} a les goûts les plus proches du groupe (${best} pts).`;
+  s.summary = `Tier list terminée ! ${top ? `Numéro 1 du groupe : ${top.it.name} ${top.it.emoji.split(' ')[0]}. ` : ''}${joinNames(s.winners.map((id) => nameOf(ctx, id))) || 'Personne'} ${s.winners.length > 1 ? 'ont' : 'a'} les goûts les plus proches du groupe (${best} pts).`;
   ctx.announce(s.summary);
 }
 

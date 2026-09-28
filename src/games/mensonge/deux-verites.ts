@@ -1,4 +1,5 @@
 // 🤥 2 vérités, 1 mensonge : chacun passe sur la sellette, les autres traquent le mensonge.
+import { joinNames } from '../../core/text';
 import type { AgentAPI, AgentMind, AIStrategy, BaseState, BaseView, GameAction, GameModule, RuntimeCtx } from '../../core/types';
 import type { PersonaFacts } from '../../content/types';
 import { personaFacts } from '../../content/extra/persona-facts';
@@ -159,7 +160,7 @@ function endGame(s: DVState, ctx: RuntimeCtx) {
   s.winners = best > 0 ? s.active.filter((id) => (s.scores[id] ?? 0) === best) : [];
   const liar = s.done.slice().sort((a, b) => (b.gained[b.pid] ?? 0) - (a.gained[a.pid] ?? 0))[0];
   s.summary =
-    `${s.winners.map((id) => nameOf(ctx, id)).join(' et ') || 'Personne'} remporte${s.winners.length > 1 ? 'nt' : ''} la partie avec ${best} pts !` +
+    `${joinNames(s.winners.map((id) => nameOf(ctx, id))) || 'Personne'} remporte${s.winners.length > 1 ? 'nt' : ''} la partie avec ${best} pts !` +
     (liar && (liar.gained[liar.pid] ?? 0) > 0 ? ` Meilleur menteur : ${nameOf(ctx, liar.pid)} (« ${liar.statements![liar.lie!]} »).` : '');
   ctx.announce(s.summary);
 }

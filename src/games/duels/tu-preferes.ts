@@ -1,4 +1,5 @@
 // 🤷 Tu préfères ? Dilemmes impossibles : choisis ton camp et devine celui du groupe.
+import { joinNames } from '../../core/text';
 import type { AgentMind, AIStrategy, BaseState, BaseView, GameAction, GameModule, OptionChoice, RuntimeCtx } from '../../core/types';
 import type { Dilemma } from '../../content/types';
 import { dilemmas } from '../../content/extra/dilemmas';
@@ -125,7 +126,7 @@ function endGame(s: TPState, ctx: RuntimeCtx) {
     for (const [id, x] of Object.entries(r.votes)) if (x.choice !== r.majority) minority[id] = (minority[id] ?? 0) + 1;
   }
   const rebel = Object.entries(minority).sort((a, b) => b[1] - a[1])[0];
-  s.summary = `${s.winners.map((id) => nameOf(ctx, id)).join(' et ') || 'Personne'} lit le mieux dans les pensées du groupe (${best} pts).${rebel ? ` Esprit rebelle : ${nameOf(ctx, rebel[0])} (${rebel[1]} fois dans la minorité) 😎` : ''}`;
+  s.summary = `${joinNames(s.winners.map((id) => nameOf(ctx, id))) || 'Personne'} ${s.winners.length > 1 ? 'lisent' : 'lit'} le mieux dans les pensées du groupe (${best} pts).${rebel ? ` Esprit rebelle : ${nameOf(ctx, rebel[0])} (${rebel[1]} fois dans la minorité) 😎` : ''}`;
   ctx.announce(s.summary);
 }
 
