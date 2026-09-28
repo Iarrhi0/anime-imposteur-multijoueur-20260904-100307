@@ -1,4 +1,4 @@
-import { voiceConfig } from "./voice-config.js?v=8.6.2";
+import { voiceConfig } from "./voice-config.js?v=10.0.0";
 
 const STUN_SERVERS = [
   { urls: ["stun:stun.cloudflare.com:3478", "stun:stun.cloudflare.com:53"] },
