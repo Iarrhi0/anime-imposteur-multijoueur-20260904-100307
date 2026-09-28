@@ -1746,6 +1746,74 @@ async function startCharacterParty(){
   );
 }
 
+async function startCharacterParty(){
+  if(!isHost)return;
+  const humans=players.filter(p=>now()-(p.lastSeenMs||0)<OFFLINE_DROP_MS);
+  if(humans.length<2)return toast("Devine mon personnage","2 joueurs humains minimum.");
+
+  await clearPartyCollection("partyAssignments");
+  await clearPartyCollection("partyVotes");
+
+  let pool=[];
+  try{
+    pool=await getOnlineCharacterPool();
+  }catch(e){
+    console.warn("Character party online pool",e);
+  }
+
+  if(!pool?.length){
+    pool=(localCharacters||[]).map((x,i)=>({
+      id:"local_"+i,
+      name:x.name,
+      anime:x.anime,
+      imageUrl:"",
+      source:"local"
+    }));
+  }
+
+  if(pool.length<humans.length)throw new Error("Pas assez de personnages disponibles.");
+
+  const shuffled=shuffle(pool).slice(0,humans.length);
+  const prev=currentRoomData?.partySession;
+  const round=(prev?.mode==="guess-character"?Number(prev.round||0):0)+1;
+  const sessionId=`character_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+
+  const batch=fb.fsMod.writeBatch(db);
+  humans.forEach((p,i)=>{
+    const ch=shuffled[i];
+    batch.set(
+      fb.fsMod.doc(db,"rooms",currentRoom,"partyAssignments",p.id),
+      {
+        sessionId,
+        playerId:p.id,
+        playerName:p.name,
+        kind:"character",
+        name:ch.name,
+        anime:ch.anime,
+        imageUrl:ch.imageUrl||"",
+        createdMs:now()
+      }
+    );
+  });
+  await batch.commit();
+
+  await fb.fsMod.updateDoc(
+    fb.fsMod.doc(db,"rooms",currentRoom),
+    {
+      status:"party",
+      selectedMode:"guess-character",
+      partySession:{
+        id:sessionId,
+        mode:"guess-character",
+        phase:"discussion",
+        round,
+        createdMs:now(),
+        revealedGroups:[]
+      }
+    }
+  );
+}
+
 async function startGroupParty(){
   if(!isHost)return;
   const humans=players.filter(p=>now()-(p.lastSeenMs||0)<OFFLINE_DROP_MS);
