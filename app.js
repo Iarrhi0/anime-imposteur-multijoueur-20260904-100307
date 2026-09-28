@@ -2153,12 +2153,17 @@ function renderHints(){
   patchText("#hint-count",data.length);patchHTML("#hints-list",data.slice(-60).map(h=>`<div class="hint-row"><b>${esc(h.playerName)}</b><strong>${h.revealed?esc(h.word):"••••"}</strong><span>T${h.round}</span></div>`).join("")||`<div class="player-sub">Aucun indice.</div>`);
 }
 function renderMessages(){
-  const list=$("#chat-list");if(!list)return;
-  const data=messages.slice(-80),key=data.map(m=>m.id).join(",");
-  if(list.__key===key)return;
-  const near=list.scrollHeight-list.scrollTop-list.clientHeight<90;
-  list.innerHTML=data.map(m=>`<div class="message ${m.playerId===currentUser.uid?"me":""}"><div class="who">${esc(m.playerName)}</div><div class="body">${esc(m.text)}</div></div>`).join("");
-  list.__key=key;if(near||!list.__done){list.scrollTop=list.scrollHeight;list.__done=true}
+  const data=messages.slice(-80);
+  const key=data.map(m=>m.id).join(",");
+  const html=data.map(m=>`<div class="message ${m.playerId===currentUser?.uid?"me":""}"><div class="who">${esc(m.playerName)}</div><div class="body">${esc(m.text)}</div></div>`).join("");
+
+  for(const list of [$("#chat-list"),$("#party-chat-list")].filter(Boolean)){
+    if(list.__key===key)continue;
+    const near=list.scrollHeight-list.scrollTop-list.clientHeight<90;
+    list.innerHTML=html||`<div class="player-sub">Aucun message.</div>`;
+    list.__key=key;
+    if(near||!list.__done){list.scrollTop=list.scrollHeight;list.__done=true}
+  }
 }
 
 async function joinCurrentVoice(){
@@ -2857,6 +2862,13 @@ document.addEventListener("click",e=>{
   }
 });
 $("#chat-input").addEventListener("keydown",e=>{if(e.key==="Enter")$("#send-chat-btn").click()});
+$("#party-send-chat-btn")?.addEventListener("click",()=>{
+  const input=$("#party-chat-input");
+  const text=input?.value||"";
+  if(input)input.value="";
+  sendMessage(text).catch(e=>toast("Chat",e.message));
+});
+$("#party-chat-input")?.addEventListener("keydown",e=>{if(e.key==="Enter")$("#party-send-chat-btn")?.click()});
 $("#propose-vote-btn").addEventListener("click",()=>proposeVote().catch(e=>toast("Erreur",e.message)));
 $("#submit-vote-btn").addEventListener("click",async()=>{const id=$("#vote-choices").dataset.selectedId;if(!id)return toast("Choisis un joueur");await writeMyVote(id);scheduleRender()});
 $("#confirm-vote-btn").addEventListener("click",()=>confirmMyVote().catch(e=>toast("Erreur",e.message)));
