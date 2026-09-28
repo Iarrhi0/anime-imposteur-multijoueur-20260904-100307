@@ -98,7 +98,11 @@ service cloud.firestore {
         allow create: if member(roomId)
           && request.resource.data.gameNo == rd(roomId).gameNo
           && (request.resource.data.playerId == request.auth.uid || isHost(roomId));
-        allow update, delete: if isHost(roomId);
+        allow update: if isHost(roomId);
+        allow delete: if isHost(roomId)
+          || (member(roomId)
+            && resource.data.kind == 'voice-signal'
+            && (resource.data.playerId == request.auth.uid || resource.data.to == request.auth.uid));
       }
       match /voteApprovals/{id} {
         allow read: if member(roomId);
