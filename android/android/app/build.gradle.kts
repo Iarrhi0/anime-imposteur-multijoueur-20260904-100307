@@ -8,8 +8,8 @@ android {
         applicationId = "com.animeimposteur.app"
         minSdk = 24
         targetSdk = 35
-        versionCode = 862
-        versionName = "8.6.2"
+        versionCode = 863
+        versionName = "8.6.3"
         buildConfigField("String","GAME_URL","\"https://iarrhi0.github.io/anime-imposteur-multijoueur-20260904-100307/\"")
     }
     buildFeatures { buildConfig = true }
