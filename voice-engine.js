@@ -275,7 +275,7 @@ export class VoiceEngine {
   }
 
   async sendSignal(remoteUid,type,payload){
-    if(!this.joined||!this.gameNo)return;
+    if(!this.joined)return;
     const target=this.members.get(remoteUid);
     if(!target?.sessionId)return;
 
