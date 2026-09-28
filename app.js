@@ -144,35 +144,75 @@ function cleanupRoom(){
 }
 
 async function initFirebase(){
-  if(!firebaseConfig){
-    $("#fatal-config").classList.remove("hidden");
-    $("#fatal-config").innerHTML="<strong>Firebase non configuré.</strong><span>Relance le déploiement V7.1.</span>";
-    return;
-  }
-  try{
-    const appMod=await import("https://www.gstatic.com/firebasejs/12.2.1/firebase-app.js");
-    const authMod=await import("https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js");
-    const fsMod=await import("https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js");
-    const app=appMod.initializeApp(firebaseConfig);
-    auth=authMod.getAuth(app);db=fsMod.getFirestore(app);fb={authMod,fsMod};
-    voiceEngine=new VoiceEngine({onChange:()=>renderVoicePanel(),toast});
-    voiceEngine.setFirebase({db,fsMod});
-    authMod.onAuthStateChanged(auth,async user=>{
-      if(!user){try{await authMod.signInAnonymously(auth)}catch(e){toast("Firebase",e.message)};return}
-      currentUser=user;$("#connection-dot").classList.add("online");
-      const saved=localStorage.getItem("anime_room");
-      if(saved)resumeRoom(saved).catch(()=>localStorage.removeItem("anime_room"));
-    });
-  }catch(e){
-    $("#fatal-config").classList.remove("hidden");
-    $("#fatal-config").innerHTML=`<strong>Firebase ne charge pas.</strong><span>${esc(e.message)}</span>`;
-  }
+  if(firebaseInitPromise)return firebaseInitPromise;
+
+  firebaseInitPromise=(async()=>{
+    if(!firebaseConfig){
+      $("#fatal-config").classList.remove("hidden");
+      $("#fatal-config").innerHTML="<strong>Firebase non configuré.</strong><span>Les jeux locaux restent disponibles.</span>";
+      return false;
+    }
+
+    try{
+      const [appMod,authMod,fsMod]=await Promise.all([
+        import("https://www.gstatic.com/firebasejs/12.2.1/firebase-app.js"),
+        import("https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js"),
+        import("https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js")
+      ]);
+
+      const app=appMod.initializeApp(firebaseConfig);
+      auth=authMod.getAuth(app);
+      db=fsMod.getFirestore(app);
+      fb={authMod,fsMod};
+
+      voiceEngine=new VoiceEngine({onChange:()=>renderVoicePanel(),toast});
+      voiceEngine.setFirebase({db,fsMod});
+
+      authMod.onAuthStateChanged(auth,async user=>{
+        if(!user){
+          try{await authMod.signInAnonymously(auth)}
+          catch(e){console.warn("Anonymous auth",e)}
+          return;
+        }
+
+        currentUser=user;
+        $("#connection-dot")?.classList.add("online");
+        $("#fatal-config")?.classList.add("hidden");
+
+        const saved=localStorage.getItem("anime_room");
+        if(saved&&!currentRoom){
+          resumeRoom(saved).catch(()=>localStorage.removeItem("anime_room"));
+        }
+      });
+
+      if(!auth.currentUser){
+        await authMod.signInAnonymously(auth).catch(()=>{});
+      }
+      return true;
+    }catch(e){
+      firebaseInitPromise=null;
+      console.warn("Firebase init",e);
+      $("#connection-dot")?.classList.remove("online");
+      return false;
+    }
+  })();
+
+  return firebaseInitPromise;
 }
+
 async function ensureUserReady(){
   if(currentUser&&fb&&db)return currentUser;
-  toast("Connexion…","Initialisation.");
-  for(let i=0;i<40;i++){if(currentUser&&fb&&db)return currentUser;await sleep(250)}
-  throw new Error("Firebase n’est pas prêt.");
+
+  toast("Connexion…","Préparation du salon à distance.");
+  await initFirebase().catch(()=>false);
+
+  // Les connexions mobiles lentes peuvent prendre largement plus de 10 secondes.
+  for(let i=0;i<120;i++){
+    if(currentUser&&fb&&db)return currentUser;
+    await sleep(250);
+  }
+
+  throw new Error("Le salon en ligne n’est pas encore prêt. Réessaie dans quelques secondes. Les jeux locaux restent disponibles.");
 }
 
 function participants(){return [...players,...bots]}
