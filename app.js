@@ -1534,6 +1534,226 @@ async function processBotQueue(){
   finally{botQueueBusy=false;if(botMessageQueue.length)setTimeout(processBotQueue,80)}
 }
 
+async function clearPartyCollection(name){
+  if(!isHost||!fb||!currentRoom)return;
+  const snap=await fb.fsMod.getDocs(fb.fsMod.collection(db,"rooms",currentRoom,name));
+  if(snap.empty)return;
+
+  let batch=fb.fsMod.writeBatch(db);
+  let n=0;
+  for(const d of snap.docs){
+    batch.delete(d.ref);
+    n++;
+    if(n>=400){
+      await batch.commit();
+      batch=fb.fsMod.writeBatch(db);
+      n=0;
+    }
+  }
+  if(n)await batch.commit();
+}
+
+async function setRoomMode(mode){
+  if(!isHost||!currentRoom)return;
+  await fb.fsMod.updateDoc(
+    fb.fsMod.doc(db,"rooms",currentRoom),
+    {selectedMode:mode}
+  );
+}
+
+async function startSelectedRoomMode(){
+  if(!isHost)return;
+  const mode=currentRoomData?.selectedMode||"impostor";
+  if(mode==="vs")return startVsParty();
+  if(mode==="guess-group")return startGroupParty();
+  return startGame();
+}
+
+async function startVsParty(){
+  if(!isHost)return;
+  const humans=players.filter(p=>now()-(p.lastSeenMs||0)<OFFLINE_DROP_MS);
+  if(humans.length<2)return toast("VS vocal","2 joueurs humains minimum.");
+
+  await clearPartyCollection("partyVotes");
+
+  const prev=currentRoomData?.partySession;
+  const round=(prev?.mode==="vs"?Number(prev.round||0):0)+1;
+  const prompt=newVsPrompt();
+  const session={
+    id:prompt.id,
+    mode:"vs",
+    phase:"discussion",
+    round,
+    prompt,
+    speakerIndex:0,
+    createdMs:now(),
+    result:null
+  };
+
+  await fb.fsMod.updateDoc(
+    fb.fsMod.doc(db,"rooms",currentRoom),
+    {
+      status:"party",
+      selectedMode:"vs",
+      partySession:session
+    }
+  );
+}
+
+async function nextPartySpeaker(){
+  if(!isHost)return;
+  const s=currentRoomData?.partySession;
+  if(!s||s.mode!=="vs"||s.phase!=="discussion")return;
+
+  const humans=players.filter(p=>now()-(p.lastSeenMs||0)<OFFLINE_DROP_MS);
+  const next=humans.length?((Number(s.speakerIndex||0)+1)%humans.length):0;
+
+  await fb.fsMod.updateDoc(
+    fb.fsMod.doc(db,"rooms",currentRoom),
+    {"partySession.speakerIndex":next}
+  );
+}
+
+async function openPartyVote(){
+  if(!isHost)return;
+  const s=currentRoomData?.partySession;
+  if(!s||s.mode!=="vs")return;
+
+  await clearPartyCollection("partyVotes");
+  await fb.fsMod.updateDoc(
+    fb.fsMod.doc(db,"rooms",currentRoom),
+    {
+      "partySession.phase":"vote",
+      "partySession.result":null
+    }
+  );
+}
+
+async function castPartyVote(choice){
+  const s=currentRoomData?.partySession;
+  if(!s||s.mode!=="vs"||s.phase!=="vote"||!currentUser)return;
+  if(!["A","B"].includes(choice))return;
+
+  await fb.fsMod.setDoc(
+    fb.fsMod.doc(db,"rooms",currentRoom,"partyVotes",currentUser.uid),
+    {
+      sessionId:s.id,
+      playerId:currentUser.uid,
+      playerName:participantById(currentUser.uid)?.name||"Joueur",
+      choice,
+      createdMs:now()
+    }
+  );
+}
+
+async function finishPartyVote(){
+  if(!isHost)return;
+  const s=currentRoomData?.partySession;
+  if(!s||s.mode!=="vs"||s.phase!=="vote")return;
+
+  const votes=partyVotes.filter(v=>v.sessionId===s.id);
+  const a=votes.filter(v=>v.choice==="A").length;
+  const b=votes.filter(v=>v.choice==="B").length;
+
+  await fb.fsMod.updateDoc(
+    fb.fsMod.doc(db,"rooms",currentRoom),
+    {
+      "partySession.phase":"result",
+      "partySession.result":{a,b,total:votes.length,closedMs:now()}
+    }
+  );
+}
+
+async function startGroupParty(){
+  if(!isHost)return;
+  const humans=players.filter(p=>now()-(p.lastSeenMs||0)<OFFLINE_DROP_MS);
+  if(humans.length<2)return toast("Devine mon groupe","2 joueurs humains minimum.");
+
+  await clearPartyCollection("partyAssignments");
+  await clearPartyCollection("partyVotes");
+
+  const groups=shuffle(allGuessGroups());
+  const prev=currentRoomData?.partySession;
+  const round=(prev?.mode==="guess-group"?Number(prev.round||0):0)+1;
+  const sessionId=`group_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+
+  const batch=fb.fsMod.writeBatch(db);
+  humans.forEach((p,i)=>{
+    const g=groups[i%groups.length];
+    batch.set(
+      fb.fsMod.doc(db,"rooms",currentRoom,"partyAssignments",p.id),
+      {
+        sessionId,
+        playerId:p.id,
+        playerName:p.name,
+        name:g.name,
+        type:g.type,
+        anime:g.anime,
+        clues:g.clues,
+        examples:g.examples,
+        createdMs:now()
+      }
+    );
+  });
+  await batch.commit();
+
+  await fb.fsMod.updateDoc(
+    fb.fsMod.doc(db,"rooms",currentRoom),
+    {
+      status:"party",
+      selectedMode:"guess-group",
+      partySession:{
+        id:sessionId,
+        mode:"guess-group",
+        phase:"discussion",
+        round,
+        createdMs:now(),
+        revealedGroups:[]
+      }
+    }
+  );
+}
+
+async function revealPartyGroups(){
+  if(!isHost)return;
+  const s=currentRoomData?.partySession;
+  if(!s||s.mode!=="guess-group")return;
+
+  const snap=await fb.fsMod.getDocs(
+    fb.fsMod.collection(db,"rooms",currentRoom,"partyAssignments")
+  );
+
+  const revealed=snap.docs
+    .map(d=>d.data())
+    .filter(x=>x.sessionId===s.id)
+    .map(x=>({
+      playerId:x.playerId,
+      playerName:x.playerName,
+      name:x.name,
+      type:x.type,
+      anime:x.anime
+    }));
+
+  await fb.fsMod.updateDoc(
+    fb.fsMod.doc(db,"rooms",currentRoom),
+    {
+      "partySession.phase":"result",
+      "partySession.revealedGroups":revealed
+    }
+  );
+}
+
+async function returnPartyToLobby(){
+  if(!isHost)return;
+  await fb.fsMod.updateDoc(
+    fb.fsMod.doc(db,"rooms",currentRoom),
+    {
+      status:"lobby",
+      partySession:null
+    }
+  );
+}
+
 function renderAll(){
   if(!currentRoomData){
     if(["guess-character","guess-group"].includes(currentScreen))return;
