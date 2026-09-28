@@ -1,7 +1,7 @@
 import { firebaseConfig } from "./firebase-config.js";
 import { VoiceEngine } from "./voice-engine.js?v=10.0.0";
-import { animeDB, chooseIntelligentPair } from "./ai-engine.js?v=10.0.0";
-import { chooseOnlineIntelligentPair, warmOnlineCharacterPool, getOnlineEngineInfo } from "./online-character-engine.js?v=10.0.0";
+import { animeDB, characters as localCharacters, chooseIntelligentPair } from "./ai-engine.js?v=10.0.0";
+import { chooseOnlineIntelligentPair, warmOnlineCharacterPool, getOnlineCharacterPool, getOnlineEngineInfo } from "./online-character-engine.js?v=10.0.0";
 import { chooseUniverseConceptPair, conceptEngineStats } from "./concept-engine.js?v=10.0.0";
 import {
   newGuessCharacterChallenge,
@@ -440,7 +440,7 @@ async function enterRoom(code){
   }));
   roomUnsubs.push(onSnapshot(doc(db,"rooms",code,"assignments",currentUser.uid),snap=>{
     const data=snap.exists()?snap.data():null;
-    if(data?.kind==="party-group"){
+    if(data?.kind==="party-group"||data?.kind==="party-character"){
       partyAssignment=data;
       assignment=null;
     }else{
@@ -1584,6 +1584,7 @@ async function startSelectedRoomMode(){
   const mode=currentRoomData?.selectedMode||"impostor";
   if(mode==="vs")return startVsParty();
   if(mode==="guess-group")return startGroupParty();
+  if(mode==="guess-character")return startCharacterParty();
   return startGame();
 }
 
@@ -1684,6 +1685,68 @@ async function finishPartyVote(){
   );
 }
 
+async function startCharacterParty(){
+  if(!isHost)return;
+  const humans=players.filter(p=>now()-(p.lastSeenMs||0)<OFFLINE_DROP_MS);
+  if(humans.length<2)return toast("Devine mon personnage","2 joueurs humains minimum.");
+
+  await clearPartyVoteMessages();
+
+  let pool=[];
+  try{pool=await getOnlineCharacterPool()}catch{}
+  if(!pool?.length){
+    pool=(localCharacters||[]).map((x,i)=>({
+      id:"local_"+i,
+      name:x.name,
+      anime:x.anime,
+      imageUrl:"",
+      traits:x.traits||{}
+    }));
+  }
+  if(pool.length<humans.length)return toast("Personnages","Catalogue insuffisant.");
+
+  const picks=shuffle(pool).slice(0,humans.length);
+  const prev=currentRoomData?.partySession;
+  const round=(prev?.mode==="guess-character"?Number(prev.round||0):0)+1;
+  const sessionId=`char_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+
+  const batch=fb.fsMod.writeBatch(db);
+  humans.forEach((p,i)=>{
+    const ch=picks[i];
+    batch.set(
+      fb.fsMod.doc(db,"rooms",currentRoom,"assignments",p.id),
+      {
+        kind:"party-character",
+        sessionId,
+        playerId:p.id,
+        playerName:p.name,
+        name:ch.name,
+        type:"personnage",
+        anime:ch.anime,
+        imageUrl:ch.imageUrl||"",
+        createdMs:now()
+      }
+    );
+  });
+  await batch.commit();
+
+  await fb.fsMod.updateDoc(
+    fb.fsMod.doc(db,"rooms",currentRoom),
+    {
+      status:"party",
+      selectedMode:"guess-character",
+      partySession:{
+        id:sessionId,
+        mode:"guess-character",
+        phase:"discussion",
+        round,
+        createdMs:now(),
+        revealedGroups:[]
+      }
+    }
+  );
+}
+
 async function startGroupParty(){
   if(!isHost)return;
   const humans=players.filter(p=>now()-(p.lastSeenMs||0)<OFFLINE_DROP_MS);
@@ -1737,7 +1800,7 @@ async function startGroupParty(){
 async function revealPartyGroups(){
   if(!isHost)return;
   const s=currentRoomData?.partySession;
-  if(!s||s.mode!=="guess-group")return;
+  if(!s||!["guess-group","guess-character"].includes(s.mode))return;
 
   const snap=await fb.fsMod.getDocs(
     fb.fsMod.collection(db,"rooms",currentRoom,"assignments")
@@ -1857,6 +1920,9 @@ function renderLobbyPlayers(){
   if(mode==="impostor"){
     start.disabled=all.length<3;
     start.textContent=all.length<3?"3 participants minimum":"🎭 Lancer Anime Imposteur";
+  }else if(mode==="guess-character"){
+    start.disabled=humans.length<2;
+    start.textContent=humans.length<2?"2 joueurs humains minimum":"🕵️ Lancer Devine mon personnage";
   }else if(mode==="guess-group"){
     start.disabled=humans.length<2;
     start.textContent=humans.length<2?"2 joueurs humains minimum":"👥 Lancer Devine mon groupe";
@@ -1881,7 +1947,7 @@ function renderPartySession(){
   );
 
   $("#party-vs-panel")?.classList.toggle("hidden",mode!=="vs");
-  $("#party-group-panel")?.classList.toggle("hidden",mode!=="guess-group");
+  $("#party-group-panel")?.classList.toggle("hidden",!["guess-group","guess-character"].includes(mode));
 
   if(mode==="vs"){
     const p=session.prompt||{};
@@ -1931,8 +1997,14 @@ function renderPartySession(){
     }
   }
 
-  if(mode==="guess-group"){
+  if(mode==="guess-group"||mode==="guess-character"){
     const revealed=session.phase==="result";
+    const isCharacter=mode==="guess-character";
+    patchText("#party-secret-kicker",isCharacter?"DEVINE MON PERSONNAGE":"DEVINE MON GROUPE");
+    patchText("#party-secret-title",isCharacter?"Chacun reçoit un personnage secret.":"Chacun reçoit un groupe secret.");
+    patchText("#party-secret-label",isCharacter?"TON PERSONNAGE":"TON GROUPE");
+    patchText("#party-secret-instruction",isCharacter?"Faites deviner votre personnage":"Faites deviner votre groupe");
+    patchText("#party-secret-help",isCharacter?"Donnez des indices à l’oral sans dire le nom.":"Exemples : Akatsuki, cheveux longs, épéistes, mentors…");
     const box=$("#party-my-group");
     const visible=box?.dataset.visible==="1"||revealed;
     const group=partyAssignment?.sessionId===session.id?partyAssignment:null;
@@ -1940,8 +2012,14 @@ function renderPartySession(){
     if(box){
       const strong=box.querySelector("strong");
       const p=box.querySelector("p");
-      if(strong)strong.textContent=visible?(group?.name||"Groupe non attribué"):"••••••";
+      if(strong)strong.textContent=visible?(group?.name||(isCharacter?"Personnage non attribué":"Groupe non attribué")):"••••••";
       if(p)p.textContent=visible?(group?.anime||group?.type||""):"";
+    }
+    const secretImg=$("#party-secret-image");
+    if(secretImg){
+      const showImg=isCharacter&&visible&&!!group?.imageUrl;
+      secretImg.classList.toggle("hidden",!showImg);
+      if(showImg)secretImg.src=group.imageUrl;
     }
 
     $("#party-toggle-group-btn")?.classList.toggle("hidden",revealed);
@@ -2670,6 +2748,7 @@ $("#copy-code-btn").addEventListener("click",async()=>{await navigator.clipboard
 $("#share-room-btn").addEventListener("click",async()=>{const t=`Rejoins ma salle Anime Imposteur : ${currentRoom}`;if(navigator.share)await navigator.share({title:"Anime Imposteur",text:t,url:location.href});else await navigator.clipboard.writeText(t+" "+location.href)});
 $("#start-game-btn").addEventListener("click",()=>startSelectedRoomMode().catch(e=>toast("Erreur",e.message)));
 $("#next-game-btn").addEventListener("click",()=>startGame().catch(e=>toast("Erreur",e.message)));
+$("#change-game-after-impostor-btn")?.addEventListener("click",()=>returnPartyToLobby().catch(e=>toast("Salon",e.message)));
 $("#send-hint-btn").addEventListener("click",()=>sendHint().catch(e=>toast("Erreur",e.message)));
 $("#hint-input").addEventListener("keydown",e=>{if(e.key==="Enter")$("#send-hint-btn").click()});
 $("#send-chat-btn").addEventListener("click",()=>{const t=$("#chat-input").value;$("#chat-input").value="";sendMessage(t).catch(e=>toast("Erreur",e.message))});
@@ -2758,7 +2837,11 @@ $("#party-toggle-group-btn")?.addEventListener("click",()=>{
   renderPartySession();
 });
 $("#party-reveal-groups-btn")?.addEventListener("click",()=>revealPartyGroups().catch(e=>toast("Groupes",e.message)));
-$("#party-new-group-round-btn")?.addEventListener("click",()=>startGroupParty().catch(e=>toast("Groupes",e.message)));
+$("#party-new-group-round-btn")?.addEventListener("click",()=>{
+  const mode=currentRoomData?.partySession?.mode;
+  const action=mode==="guess-character"?startCharacterParty:startGroupParty;
+  action().catch(e=>toast("Nouvelle manche",e.message));
+});
 
 $$("[data-guess-play]").forEach(b=>b.addEventListener("click",()=>{
   guessSettings.play=b.dataset.guessPlay;
