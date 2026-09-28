@@ -1535,15 +1535,46 @@ async function processBotQueue(){
 }
 
 function renderAll(){
-  if(!currentRoomData){show("home");return}
+  if(!currentRoomData){
+    if(["guess-character","guess-group"].includes(currentScreen))return;
+    show("home");
+    return;
+  }
+
   voiceEngine?.setGameNo(currentRoomData.gameNo||0);
   voiceEngine?.updateMembers(players);
-  renderRoomRole();routeByStatus();renderLobbyPlayers();renderGameHeader();renderGamePlayers();
-  renderHints();renderMessages();renderVoicePanel();renderProposal();renderVoting();renderScores();renderBadges();
+
+  renderRoomRole();
+  routeByStatus();
+  renderLobbyPlayers();
+  renderPartySession();
+  renderGameHeader();
+  renderGamePlayers();
+  renderHints();
+  renderMessages();
+  renderVoicePanel();
+  renderProposal();
+  renderVoting();
+  renderScores();
+  renderBadges();
+
   if(currentRoomData.status==="postvote")renderResult();
 }
+
 function routeByStatus(){
-  const s=currentRoomData.status;if(s==="lobby"){show("lobby");return}show("game");
+  const s=currentRoomData.status;
+
+  if(s==="lobby"){
+    show("lobby");
+    return;
+  }
+
+  if(s==="party"){
+    show("party");
+    return;
+  }
+
+  show("game");
   const chat=activeTab==="chat",vote=s==="voting",post=s==="postvote";
 
   $("#game-chat-panel").classList.toggle("hidden",!chat);
@@ -1564,15 +1595,130 @@ function renderRoomRole(){
   patchText("#my-role-pill",isHost?"👑 Hôte":"Joueur");
 }
 function renderLobbyPlayers(){
-  const all=participants();patchText("#player-count",`${all.length} joueur${all.length>1?"s":""}`);
+  const all=participants();
+  const humans=players.filter(p=>now()-(p.lastSeenMs||0)<OFFLINE_DROP_MS);
+
+  patchText("#player-count",`${all.length} joueur${all.length>1?"s":""}`);
   patchHTML("#players-list",all.map(p=>{
-    const host=!p.bot&&p.id===currentRoomData?.hostUid,me=!p.bot&&p.id===currentUser?.uid,online=p.bot||now()-(p.lastSeenMs||0)<OFFLINE_DROP_MS;
+    const host=!p.bot&&p.id===currentRoomData?.hostUid;
+    const me=!p.bot&&p.id===currentUser?.uid;
+    const online=p.bot||now()-(p.lastSeenMs||0)<OFFLINE_DROP_MS;
     return `<div class="player-row"><div class="avatar ${p.bot?"bot":""}">${p.bot?"🤖":esc((p.name||"?")[0].toUpperCase())}</div>
       <div class="player-meta"><div class="player-name">${esc(p.name)}</div><div class="player-sub">${p.bot?`IA • ${esc(p.difficulty||"Normal")}`:host?"👑 Hôte":me?"Toi":online?"À distance":"Hors ligne"}</div></div>
       ${isHost&&p.bot?`<button class="remove-bot" data-remove-bot="${p.id}">×</button>`:`<span class="${online?"status-ok":"status-off"}">●</span>`}</div>`;
   }).join(""));
-  $("#start-game-btn").disabled=all.length<3;$("#start-game-btn").textContent=all.length<3?"3 participants minimum":"Commencer la partie";
+
+  const mode=currentRoomData?.selectedMode||"impostor";
+  $("[data-room-mode]").forEach(btn=>btn.classList.toggle("active",btn.dataset.roomMode===mode));
+
+  const start=$("#start-game-btn");
+  if(!start)return;
+
+  if(mode==="impostor"){
+    start.disabled=all.length<3;
+    start.textContent=all.length<3?"3 participants minimum":"🎭 Lancer Anime Imposteur";
+  }else if(mode==="guess-group"){
+    start.disabled=humans.length<2;
+    start.textContent=humans.length<2?"2 joueurs humains minimum":"👥 Lancer Devine mon groupe";
+  }else if(mode==="vs"){
+    start.disabled=humans.length<2;
+    start.textContent=humans.length<2?"2 joueurs humains minimum":"⚔️ Lancer le VS vocal";
+  }else{
+    start.disabled=false;
+    start.textContent="Lancer le jeu";
+  }
 }
+function renderPartySession(){
+  if(currentRoomData?.status!=="party")return;
+
+  const session=currentRoomData.partySession||{};
+  const mode=session.mode||"vs";
+  patchText("#party-room-code",currentRoom||"-----");
+  patchText(
+    "#party-round-label",
+    `${mode==="vs"?"VS vocal":"Devine mon groupe"} • Manche ${session.round||1}`
+  );
+
+  $("#party-vs-panel")?.classList.toggle("hidden",mode!=="vs");
+  $("#party-group-panel")?.classList.toggle("hidden",mode!=="guess-group");
+
+  if(mode==="vs"){
+    const p=session.prompt||{};
+    patchText("#party-vs-question",p.question||"Débattez puis votez.");
+    patchText("#party-vs-a",p.a||"A");
+    patchText("#party-vs-b",p.b||"B");
+
+    const humans=players.filter(x=>now()-(x.lastSeenMs||0)<OFFLINE_DROP_MS);
+    const speaker=humans.length?humans[(session.speakerIndex||0)%humans.length]:null;
+    patchText("#party-speaker-name",speaker?.name||"Discussion libre");
+
+    const phase=session.phase||"discussion";
+    $("#party-discussion-actions")?.classList.toggle("hidden",phase!=="discussion");
+    $("#party-vote-actions")?.classList.toggle("hidden",phase!=="vote");
+    $("#party-result-box")?.classList.toggle("hidden",phase!=="result");
+
+    $("#party-next-speaker-btn")?.classList.toggle("hidden",!isHost);
+    $("#party-open-vote-btn")?.classList.toggle("hidden",!isHost);
+
+    const sessionVotes=partyVotes.filter(v=>v.sessionId===session.id);
+    const mine=sessionVotes.find(v=>v.playerId===currentUser?.uid);
+    $$("[data-party-vote]").forEach(btn=>{
+      btn.disabled=phase!=="vote"||!!mine;
+      btn.classList.toggle("active",mine?.choice===btn.dataset.partyVote);
+    });
+
+    patchText(
+      "#party-vote-status",
+      mine
+        ?`Ton vote : ${mine.choice}`
+        :`${sessionVotes.length}/${humans.length} vote${sessionVotes.length>1?"s":""}`
+    );
+
+    $("#party-finish-vote-btn")?.classList.toggle(
+      "hidden",
+      !(isHost&&phase==="vote"&&sessionVotes.length>=Math.max(1,humans.length))
+    );
+
+    if(phase==="result"){
+      const result=session.result||{};
+      const a=Number(result.a||0),b=Number(result.b||0);
+      const winner=a===b?"Égalité":a>b?(p.a||"A"):(p.b||"B");
+      patchHTML(
+        "#party-result-box",
+        `<strong>${esc(winner)}</strong><span>${esc(p.a||"A")} : ${a} vote${a>1?"s":""} • ${esc(p.b||"B")} : ${b} vote${b>1?"s":""}</span>${isHost?'<button class="btn primary" data-new-vs-round type="button">Nouvelle discussion</button>':""}`
+      );
+    }
+  }
+
+  if(mode==="guess-group"){
+    const revealed=session.phase==="result";
+    const box=$("#party-my-group");
+    const visible=box?.dataset.visible==="1"||revealed;
+    const group=partyAssignment?.sessionId===session.id?partyAssignment:null;
+
+    if(box){
+      const strong=box.querySelector("strong");
+      const p=box.querySelector("p");
+      if(strong)strong.textContent=visible?(group?.name||"Groupe non attribué"):"••••••";
+      if(p)p.textContent=visible?(group?.anime||group?.type||""):"";
+    }
+
+    $("#party-toggle-group-btn")?.classList.toggle("hidden",revealed);
+    $("#party-group-host-actions")?.classList.toggle("hidden",!isHost);
+
+    const result=$("#party-groups-result");
+    result?.classList.toggle("hidden",!revealed);
+    if(revealed&&result){
+      const rows=(session.revealedGroups||[])
+        .map(x=>`<div class="player-row"><div class="avatar">${esc((x.playerName||"?")[0])}</div><div class="player-meta"><div class="player-name">${esc(x.playerName||"Joueur")}</div><div class="player-sub">${esc(x.name||"")}</div></div></div>`)
+        .join("");
+      result.innerHTML=rows||"<span>Aucun groupe révélé.</span>";
+    }
+  }
+
+  renderVoicePanel();
+}
+
 function renderGameHeader(){
   patchText("#game-round-label",`Partie ${currentRoomData.gameNo||0} • Tranche ${currentRoomData.hintRound||0}`);
   patchText("#tranche-pill",`Tranche ${currentRoomData.hintRound||1}`);
