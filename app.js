@@ -1628,6 +1628,25 @@ function renderMessages(){
   list.__key=key;if(near||!list.__done){list.scrollTop=list.scrollHeight;list.__done=true}
 }
 
+async function joinCurrentVoice(){
+  if(!currentRoom||!currentUser||!voiceEngine){
+    await ensureUserReady();
+  }
+  if(!currentRoom)throw new Error("Entre d’abord dans un salon.");
+
+  const me=participantById(currentUser?.uid);
+  const authToken=await currentUser.getIdToken();
+  await voiceEngine.join({
+    roomId:currentRoom,
+    uid:currentUser.uid,
+    name:me?.name||safeName($("#home-name")?.value),
+    authToken,
+    gameNo:currentRoomData?.gameNo||0,
+    knownPlayers:players
+  });
+  voiceEngine.updateMembers(players);
+}
+
 function renderVoicePanel(){
   const textMode=discussionMode==="text";
   $("#text-discussion-panel")?.classList.toggle("hidden",!textMode);
@@ -1636,39 +1655,42 @@ function renderVoicePanel(){
 
   if(!voiceEngine)return;
   const s=voiceEngine.getState();
-  const join=$("#voice-join-btn"),controls=$("#voice-controls"),mute=$("#voice-mute-btn");
-  if(join){
+
+  $$("[data-voice-join]").forEach(join=>{
     join.classList.toggle("hidden",s.joined);
     join.disabled=s.joining;
     join.textContent=s.joining?"Connexion au micro…":"🎙 Rejoindre le vocal";
-  }
-  controls?.classList.toggle("hidden",!s.joined);
-  if(mute)mute.textContent=s.muted?"🎙 Réactiver le micro":"🔇 Couper le micro";
+  });
+
+  $$("[data-voice-controls]").forEach(el=>el.classList.toggle("hidden",!s.joined));
+  $$("[data-voice-mute]").forEach(btn=>{
+    btn.textContent=s.muted?"🎙 Réactiver le micro":"🔇 Couper le micro";
+  });
 
   const mode=s.hasTurn?"P2P + TURN":"P2P / STUN";
-  patchText(
-    "#voice-status",
-    s.joining
-      ?"Demande d’accès au microphone…"
-      :s.joined
-        ?`Connecté • ${s.members.length} participant${s.members.length>1?"s":""} • ${mode}`
-        :"Rejoins le salon vocal de cette salle."
-  );
+  const status=s.joining
+    ?"Demande d’accès au microphone…"
+    :s.joined
+      ?`Connecté • ${s.members.length} participant${s.members.length>1?"s":""} • ${mode}`
+      :"Rejoins le salon vocal. Il reste actif quand vous changez de jeu.";
+
+  $$("[data-voice-status]").forEach(el=>{el.textContent=status});
 
   const states=new Map(s.peerStates.map(x=>[x.uid,x.state]));
-  patchHTML(
-    "#voice-members",
-    s.members.map(m=>{
-      const mine=m.uid===currentUser?.uid;
-      const st=states.get(m.uid);
-      const detail=mine?"Toi":st==="connected"?"Audio connecté":st?"Connexion…":"Dans le vocal";
-      return `<div class="voice-member">
-        <div class="voice-avatar">${esc((m.name||"?")[0].toUpperCase())}</div>
-        <div class="voice-member-copy"><strong>${esc(m.name||"Joueur")}</strong><small>${detail}</small></div>
-        <span class="voice-mic-state ${m.muted?"muted":""}">${m.muted?"🔇":"🎙"}</span>
-      </div>`;
-    }).join("") || `<div class="voice-empty">Personne n’est encore dans le vocal.</div>`
-  );
+  const membersHtml=s.members.map(m=>{
+    const mine=m.uid===currentUser?.uid;
+    const st=states.get(m.uid);
+    const detail=mine?"Toi":st==="connected"?"Audio connecté":st?"Connexion…":"Dans le vocal";
+    return `<div class="voice-member">
+      <div class="voice-avatar">${esc((m.name||"?")[0].toUpperCase())}</div>
+      <div class="voice-member-copy"><strong>${esc(m.name||"Joueur")}</strong><small>${detail}</small></div>
+      <span class="voice-mic-state ${m.muted?"muted":""}">${m.muted?"🔇":"🎙"}</span>
+    </div>`;
+  }).join("") || `<div class="voice-empty">Personne n’est encore dans le vocal.</div>`;
+
+  $$("[data-voice-members]").forEach(el=>{
+    if(el.__html!==membersHtml){el.innerHTML=membersHtml;el.__html=membersHtml}
+  });
 }
 function renderProposal(){
   const p=currentRoomData.voteProposal;if(!p||currentRoomData.status!=="playing")return;
