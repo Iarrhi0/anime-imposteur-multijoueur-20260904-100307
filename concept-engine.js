@@ -1,4 +1,4 @@
-import { getOnlineCharacterPool } from "./online-character-engine.js?v=10.0.0";
+import { getOnlineCharacterPool } from "./online-character-engine.js?v=10.1.0";
 
 const RECENT_KEY="anime_imposteur_recent_concepts_v1";
 const RECENT_PAIR_KEY="anime_imposteur_recent_concept_pairs_v1";
