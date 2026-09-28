@@ -1849,7 +1849,7 @@ function renderLobbyPlayers(){
   }).join(""));
 
   const mode=currentRoomData?.selectedMode||"impostor";
-  $("[data-room-mode]").forEach(btn=>btn.classList.toggle("active",btn.dataset.roomMode===mode));
+  $$("[data-room-mode]").forEach(btn=>btn.classList.toggle("active",btn.dataset.roomMode===mode));
 
   const start=$("#start-game-btn");
   if(!start)return;
@@ -2730,18 +2730,18 @@ $("#group-hint-btn")?.addEventListener("click",()=>{
 $("#group-next-btn")?.addEventListener("click",advanceGroupRoundLocal);
 $("#group-input")?.addEventListener("keydown",e=>{if(e.key==="Enter")submitGuessGroupLocal()});
 
-$("[data-group-play]").forEach(b=>b.addEventListener("click",()=>{
+$$("[data-group-play]").forEach(b=>b.addEventListener("click",()=>{
   groupSettings.play=b.dataset.groupPlay;
-  $("[data-group-play]").forEach(x=>x.classList.toggle("active",x===b));
+  $$("[data-group-play]").forEach(x=>x.classList.toggle("active",x===b));
   groupChallenge=null;groupDuelRound=0;groupDuelScores=[null,null];
   $("#group-game-card")?.classList.add("hidden");
   $("#group-start-btn")?.classList.remove("hidden");
   renderGroupDuelStatus();
 }));
 
-$("[data-group-difficulty]").forEach(b=>b.addEventListener("click",()=>{
+$$("[data-group-difficulty]").forEach(b=>b.addEventListener("click",()=>{
   groupSettings.difficulty=b.dataset.groupDifficulty;
-  $("[data-group-difficulty]").forEach(x=>x.classList.toggle("active",x===b));
+  $$("[data-group-difficulty]").forEach(x=>x.classList.toggle("active",x===b));
 }));
 
 $("#party-back-btn")?.addEventListener("click",()=>show("lobby"));
@@ -2760,9 +2760,9 @@ $("#party-toggle-group-btn")?.addEventListener("click",()=>{
 $("#party-reveal-groups-btn")?.addEventListener("click",()=>revealPartyGroups().catch(e=>toast("Groupes",e.message)));
 $("#party-new-group-round-btn")?.addEventListener("click",()=>startGroupParty().catch(e=>toast("Groupes",e.message)));
 
-$("[data-guess-play]").forEach(b=>b.addEventListener("click",()=>{
+$$("[data-guess-play]").forEach(b=>b.addEventListener("click",()=>{
   guessSettings.play=b.dataset.guessPlay;
-  $$("[data-guess-play]").forEach(x=>x.classList.toggle("active",x===b));
+  $$$("[data-guess-play]").forEach(x=>x.classList.toggle("active",x===b));
   guessChallenge=null;guessDuelRound=0;guessDuelScores=[null,null];
   $("#guess-game-card")?.classList.add("hidden");
   $("#guess-start-btn")?.classList.remove("hidden");
