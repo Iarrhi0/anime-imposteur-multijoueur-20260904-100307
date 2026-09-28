@@ -2776,13 +2776,6 @@ document.addEventListener("click",e=>{
   }
 });
 $("#chat-input").addEventListener("keydown",e=>{if(e.key==="Enter")$("#send-chat-btn").click()});
-$("#party-send-chat-btn")?.addEventListener("click",()=>{
-  const input=$("#party-chat-input");
-  const text=input?.value||"";
-  if(input)input.value="";
-  sendMessage(text).catch(e=>toast("Chat",e.message));
-});
-$("#party-chat-input")?.addEventListener("keydown",e=>{if(e.key==="Enter")$("#party-send-chat-btn")?.click()});
 $("#propose-vote-btn").addEventListener("click",()=>proposeVote().catch(e=>toast("Erreur",e.message)));
 $("#submit-vote-btn").addEventListener("click",async()=>{const id=$("#vote-choices").dataset.selectedId;if(!id)return toast("Choisis un joueur");await writeMyVote(id);scheduleRender()});
 $("#confirm-vote-btn").addEventListener("click",()=>confirmMyVote().catch(e=>toast("Erreur",e.message)));
