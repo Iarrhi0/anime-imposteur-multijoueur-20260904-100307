@@ -1,24 +1,24 @@
 import { firebaseConfig } from "./firebase-config.js";
-import { VoiceEngine } from "./voice-engine.js?v=10.0.0";
-import { animeDB, characters as localCharacters, chooseIntelligentPair } from "./ai-engine.js?v=10.0.0";
-import { chooseOnlineIntelligentPair, warmOnlineCharacterPool, getOnlineCharacterPool, getOnlineEngineInfo } from "./online-character-engine.js?v=10.0.0";
-import { chooseUniverseConceptPair, conceptEngineStats } from "./concept-engine.js?v=10.0.0";
+import { VoiceEngine } from "./voice-engine.js?v=10.1.0";
+import { animeDB, characters as localCharacters, chooseIntelligentPair } from "./ai-engine.js?v=10.1.0";
+import { chooseOnlineIntelligentPair, warmOnlineCharacterPool, getOnlineCharacterPool, getOnlineEngineInfo } from "./online-character-engine.js?v=10.1.0";
+import { chooseUniverseConceptPair, conceptEngineStats } from "./concept-engine.js?v=10.1.0";
 import {
   newGuessCharacterChallenge,
   submitCharacterGuess,
   revealGuessHint
-} from "./guess-character-engine.js?v=10.0.0";
+} from "./guess-character-engine.js?v=10.1.0";
 import {
   newGuessGroupChallenge,
   submitGroupGuess,
   revealGroupHint,
   allGuessGroups
-} from "./group-engine.js?v=10.0.0";
-import { newVsPrompt, vsStats } from "./vs-engine.js?v=10.0.0";
+} from "./group-engine.js?v=10.1.0";
+import { newVsPrompt, vsStats } from "./vs-engine.js?v=10.1.0";
 import {
   chooseAdaptiveBotHint, chooseBotVote, botVoteApproval,
   buildBotDiscussion, shouldBotReply, botReplyDelay, resetBotMemory
-} from "./bot-engine.js?v=10.0.0";
+} from "./bot-engine.js?v=10.1.0";
 
 const $=s=>document.querySelector(s);
 const $$=s=>[...document.querySelectorAll(s)];
@@ -2915,12 +2915,12 @@ if("serviceWorker" in navigator){
       const keys=await caches.keys();
       await Promise.all(
         keys
-          .filter(k=>k.startsWith("anime-imposteur-") && k!=="anime-imposteur-v10-0-0")
+          .filter(k=>k.startsWith("anime-imposteur-") && k!=="anime-imposteur-v10-1-0")
           .map(k=>caches.delete(k))
       );
 
       const reg=await navigator.serviceWorker.register(
-        "./service-worker.js?v=10.0.0",
+        "./service-worker.js?v=10.1.0",
         {updateViaCache:"none"}
       );
       await reg.update().catch(()=>{});
