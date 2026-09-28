@@ -1,4 +1,4 @@
-import { voiceConfig } from "./voice-config.js?v=10.0.0";
+import { voiceConfig } from "./voice-config.js?v=10.0.1";
 
 const STUN_SERVERS = [
   { urls: ["stun:stun.cloudflare.com:3478", "stun:stun.cloudflare.com:53"] },
@@ -275,7 +275,7 @@ export class VoiceEngine {
   }
 
   async sendSignal(remoteUid,type,payload){
-    if(!this.joined||!this.gameNo)return;
+    if(!this.joined)return;
     const target=this.members.get(remoteUid);
     if(!target?.sessionId)return;
 
