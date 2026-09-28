@@ -1,0 +1,144 @@
+/* Styles des jeux « Devine » (mobile d'abord). */
+.dv { display: flex; flex-direction: column; gap: 12px; }
+.dv .gh-title { font-weight: 800; }
+
+/* scores */
+.dv-scores { display: flex; flex-wrap: wrap; gap: 6px; }
+.dv-score { display: flex; align-items: center; gap: 6px; padding: 4px 10px 4px 4px; border-radius: 999px; background: var(--panel2); font-size: 0.9rem; }
+.dv-score b { margin-left: 2px; color: var(--accent); }
+.dv-score.waiting { outline: 2px dashed var(--warn); }
+.dv-score.win { outline: 2px solid var(--good); }
+.dv-score-name { max-width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* réponses */
+.dv-ans { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 0.8rem; font-weight: 700; white-space: nowrap; }
+.dv-ans.yes { background: color-mix(in srgb, var(--good) 22%, transparent); color: var(--good); }
+.dv-ans.no { background: color-mix(in srgb, var(--bad) 22%, transparent); color: var(--bad); }
+.dv-ans.maybe { background: color-mix(in srgb, var(--warn) 22%, transparent); color: var(--warn); }
+
+/* journal des questions */
+.dv-log { display: flex; flex-direction: column; gap: 6px; max-height: 280px; overflow-y: auto; }
+.dv-log-row { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: var(--radius); background: var(--panel2); }
+.dv-log-row.guess { border-left: 3px solid var(--accent2); }
+.dv-log-q { flex: 1; font-size: 0.92rem; }
+
+/* suggestions */
+.dv-sugg { margin-top: 8px; display: flex; flex-direction: column; gap: 6px; }
+.dv-chip { cursor: pointer; border: 1px solid var(--accent); background: transparent; color: var(--text); padding: 6px 10px; border-radius: 999px; font-size: 0.85rem; text-align: left; }
+.dv-chip:hover:not(:disabled) { background: var(--accent); color: var(--bg); }
+
+/* onglets */
+.dv-tabs { display: flex; gap: 6px; margin: 8px 0; }
+.dv-tab { flex: 1; padding: 8px; border-radius: var(--radius); border: 1px solid var(--panel2); background: var(--panel); color: var(--muted); font-weight: 700; cursor: pointer; }
+.dv-tab.on { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+
+/* oracle / génie */
+.dv-oracle { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.dv-orb { font-size: 64px; animation: dv-float 3s ease-in-out infinite; filter: drop-shadow(0 0 18px var(--accent2)); }
+.dv-turn-box { width: 100%; }
+.dv-meter { height: 6px; border-radius: 3px; background: var(--panel2); overflow: hidden; }
+.dv-meter > div { height: 100%; background: linear-gradient(90deg, var(--good), var(--warn), var(--bad)); transition: width 0.4s; }
+.dv-last { padding: 8px 12px; border-radius: var(--radius); background: var(--panel2); text-align: center; }
+.dv-genie-stage { display: flex; align-items: center; gap: 10px; }
+.dv-genie-face { font-size: 56px; animation: dv-float 3s ease-in-out infinite; }
+.dv-genie-face.excited { animation: dv-shake 0.5s ease-in-out infinite; }
+.dv-bubble { flex: 1; position: relative; padding: 10px 14px; border-radius: var(--radius); background: var(--panel2); font-style: italic; }
+.dv-yn { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 10px; }
+.dv-yn .btn { flex: 1 1 120px; }
+.dv-question-card .question { font-size: 1.15rem; font-weight: 700; text-align: center; }
+.dv-propose { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.dv-bets, .dv-finders, .dv-winners, .dv-votes { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+.dv-bet-chip { padding: 3px 10px; border-radius: 999px; background: var(--panel2); font-size: 0.85rem; }
+.dv-bet-chip.ok { color: var(--good); }
+.dv-bet-chip.ko { color: var(--muted); }
+.dv-vote { display: inline-flex; align-items: center; gap: 4px; }
+.dv-actions { margin-top: 10px; flex-wrap: wrap; }
+
+/* recherche */
+.dv-search { display: flex; flex-direction: column; gap: 8px; }
+.dv-search-input { width: 100%; padding: 10px 12px; border-radius: var(--radius); border: 1px solid var(--panel2); background: var(--panel2); color: var(--text); font-size: 1rem; box-sizing: border-box; }
+.dv-search-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 6px; max-height: 300px; overflow-y: auto; }
+.dv-item { display: flex; align-items: center; gap: 6px; padding: 8px; border-radius: var(--radius); border: 1px solid transparent; background: var(--panel2); color: var(--text); text-align: left; cursor: pointer; font-size: 0.88rem; }
+.dv-item.sel { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 20%, var(--panel2)); }
+.dv-item-emoji { font-size: 1.2rem; }
+
+/* révélation */
+.dv-reveal { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 16px; border-radius: var(--radius); background: var(--panel); text-align: center; }
+.dv-reveal-emoji { font-size: 56px; }
+.dv-reveal-name { font-size: 1.5rem; font-weight: 800; color: var(--accent); }
+.dv-history { display: flex; flex-direction: column; gap: 4px; margin: 8px 0; }
+.dv-hist-row { display: flex; justify-content: space-between; gap: 8px; padding: 6px 8px; border-radius: var(--radius); background: var(--panel2); font-size: 0.9rem; flex-wrap: wrap; }
+.dv-end .summary div + div { font-size: 0.9rem; color: var(--muted); }
+.dv-secret-mini { text-align: center; padding: 6px; border-radius: var(--radius); background: var(--panel2); }
+
+/* carte sur le front */
+.dv-fronts { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
+.dv-front { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px; border-radius: var(--radius); background: var(--panel); border: 2px solid transparent; }
+.dv-front.current { border-color: var(--warn); }
+.dv-front.found { border-color: var(--good); }
+.dv-front.me .dv-front-card { background: repeating-linear-gradient(45deg, var(--panel2), var(--panel2) 8px, var(--panel) 8px, var(--panel) 16px); }
+.dv-front-card { width: 64px; height: 64px; display: grid; place-items: center; border-radius: 12px; background: var(--panel2); }
+.dv-front-emoji { font-size: 34px; }
+.dv-front-name { font-weight: 700; text-align: center; font-size: 0.9rem; }
+.dv-front-player { display: flex; align-items: center; gap: 4px; font-size: 0.8rem; color: var(--muted); flex-wrap: wrap; justify-content: center; }
+.dv-front-score { color: var(--accent); }
+
+/* progressif */
+.dv-clues { display: flex; flex-direction: column; gap: 6px; }
+.dv-clue { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: var(--radius); background: var(--panel); }
+.dv-clue.tag { background: var(--panel2); }
+.dv-clue.fresh { outline: 2px solid var(--accent); }
+.dv-clue.hidden { opacity: 0.35; }
+.dv-clue-n { width: 24px; height: 24px; flex: none; display: grid; place-items: center; border-radius: 50%; background: var(--accent2); color: var(--bg); font-size: 0.8rem; font-weight: 800; }
+.dv-guess.cooling { opacity: 0.6; }
+.dv-found-banner { text-align: center; padding: 10px; border-radius: var(--radius); background: color-mix(in srgb, var(--good) 20%, var(--panel)); color: var(--good); font-weight: 700; }
+.dv-feed { display: flex; flex-direction: column; gap: 4px; }
+.dv-feed-row { display: flex; align-items: center; gap: 6px; font-size: 0.85rem; }
+.dv-feed-row.ok { color: var(--good); }
+.dv-feed-row.ko { color: var(--muted); }
+
+/* lettres */
+.dv-letters-help { display: flex; align-items: center; justify-content: center; gap: 10px; }
+.dv-letters-emoji { font-size: 40px; }
+.dv-mask { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px 14px; padding: 12px 0; }
+.dv-word { display: inline-flex; gap: 3px; }
+.dv-letter { width: 26px; height: 34px; display: grid; place-items: center; border-bottom: 3px solid var(--muted); font-size: 1.3rem; font-weight: 800; text-transform: uppercase; }
+.dv-letter.shown { color: var(--accent); border-color: var(--accent); animation: dv-pop 0.3s; }
+.dv-letter.sym { border-color: transparent; width: auto; }
+
+/* emoji quiz */
+.dv-emoji-big { font-size: 64px; text-align: center; letter-spacing: 6px; padding: 10px 0; }
+.dv-choices { display: grid; grid-template-columns: 1fr; gap: 8px; }
+.dv-choice { display: flex; align-items: center; gap: 10px; padding: 12px; border-radius: var(--radius); border: 2px solid var(--panel2); background: var(--panel); color: var(--text); font-size: 1rem; cursor: pointer; text-align: left; }
+.dv-choice:disabled { cursor: default; }
+.dv-choice.picked { border-color: var(--accent); }
+.dv-choice.good { border-color: var(--good); background: color-mix(in srgb, var(--good) 18%, var(--panel)); }
+.dv-choice.bad { border-color: var(--bad); background: color-mix(in srgb, var(--bad) 18%, var(--panel)); }
+.dv-choice.faded { opacity: 0.5; }
+.dv-choice-letter { width: 28px; height: 28px; flex: none; display: grid; place-items: center; border-radius: 50%; background: var(--accent2); color: var(--bg); font-weight: 800; }
+.dv-choice-text { flex: 1; }
+.dv-choice-who { display: inline-flex; gap: 2px; }
+.result-text.good { color: var(--good); }
+.result-text.bad { color: var(--bad); }
+
+/* qui est-ce */
+.dv-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.dv-grid.guessing .dv-cell:not(.off) { outline: 2px dashed var(--bad); }
+.dv-cell { position: relative; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 2px; min-height: 72px; border-radius: var(--radius); border: 2px solid transparent; background: var(--panel); color: var(--text); cursor: pointer; transition: opacity 0.2s, filter 0.2s; }
+.dv-cell:disabled { cursor: default; }
+.dv-cell.off { opacity: 0.25; filter: grayscale(1); }
+.dv-cell.mine { border-color: var(--accent2); }
+.dv-cell.revealed { border-color: var(--good); opacity: 1; filter: none; }
+.dv-cell-emoji { font-size: 1.5rem; }
+.dv-cell-name { font-size: 0.68rem; line-height: 1.1; text-align: center; word-break: break-word; }
+.dv-cell-tag { font-size: 0.6rem; color: var(--good); font-weight: 700; }
+
+@media (min-width: 560px) {
+  .dv-choices { grid-template-columns: 1fr 1fr; }
+  .dv-grid { grid-template-columns: repeat(6, 1fr); }
+  .dv-cell-name { font-size: 0.75rem; }
+}
+
+@keyframes dv-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+@keyframes dv-shake { 0%, 100% { transform: rotate(0); } 25% { transform: rotate(-6deg); } 75% { transform: rotate(6deg); } }
+@keyframes dv-pop { from { transform: scale(0.5); opacity: 0; } to { transform: scale(1); opacity: 1; } }

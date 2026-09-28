@@ -1,0 +1,14 @@
+name = "imposteur-party"
+main = "src/index.js"
+compatibility_date = "2026-09-01"
+
+[vars]
+# Adresse de ton site (GitHub Pages). "*" autorise tout le monde.
+ALLOWED_ORIGIN = "*"
+# Modèle Gemini gratuit utilisé pour faire parler les IA.
+GEMINI_MODEL = "gemini-2.0-flash"
+
+# Secrets (jamais dans ce fichier !) :
+#   npx wrangler secret put GEMINI_API_KEY        (obligatoire pour /talk, clé gratuite sur aistudio.google.com)
+#   npx wrangler secret put TURN_KEY_ID           (optionnel, relais vocal Cloudflare)
+#   npx wrangler secret put TURN_KEY_API_TOKEN    (optionnel)

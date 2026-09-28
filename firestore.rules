@@ -1,0 +1,176 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn(){ return request.auth != null; }
+    function rp(roomId){ return /databases/$(database)/documents/rooms/$(roomId); }
+    function roomExists(roomId){ return exists(rp(roomId)); }
+    function rd(roomId){ return get(rp(roomId)).data; }
+    function isHost(roomId){ return signedIn() && roomExists(roomId) && rd(roomId).hostUid == request.auth.uid; }
+    function member(roomId){ return signedIn() && exists(/databases/$(database)/documents/rooms/$(roomId)/players/$(request.auth.uid)); }
+
+    function canClaimHost(roomId){
+      return member(roomId)
+        && resource.data.hostLeaseUntil < request.time
+        && request.resource.data.hostUid == request.auth.uid
+        && request.resource.data.hostLeaseUntil > request.time
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['hostUid','hostLeaseUntil']);
+    }
+
+    function canOpenProposal(roomId){
+      return member(roomId)
+        && resource.data.status == 'playing'
+        && request.resource.data.voteProposal.by == request.auth.uid
+        && request.resource.data.voteProposal.state == 'open'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['voteProposal']);
+    }
+
+    function canAdvanceTimer(roomId){
+      return member(roomId)
+        && resource.data.status == 'voting'
+        && resource.data.voteStage == 'reconsider'
+        && resource.data.reconsiderEndsAt <= request.time
+        && request.resource.data.status == 'voting'
+        && request.resource.data.voteStage == 'confirming'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['voteStage']);
+    }
+
+    function canConfirmBotVote(roomId){
+      return member(roomId)
+        && rd(roomId).status == 'voting'
+        && rd(roomId).voteStage == 'confirming'
+        && resource.data.playerId.matches('^bot_.*')
+        && request.resource.data.playerId == resource.data.playerId
+        && request.resource.data.gameNo == rd(roomId).gameNo
+        && resource.data.submitted == true
+        && request.resource.data.submitted == true
+        && request.resource.data.confirmed == true
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['confirmed','updatedMs']);
+    }
+
+    function canConfirmBotStatus(roomId){
+      return member(roomId)
+        && rd(roomId).status == 'voting'
+        && rd(roomId).voteStage == 'confirming'
+        && resource.data.playerId.matches('^bot_.*')
+        && request.resource.data.playerId == resource.data.playerId
+        && request.resource.data.gameNo == rd(roomId).gameNo
+        && resource.data.submitted == true
+        && request.resource.data.submitted == true
+        && request.resource.data.confirmed == true
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['confirmed','updatedMs']);
+    }
+
+    match /rooms/{roomId} {
+      allow get: if signedIn();
+      allow list: if false;
+      allow create: if signedIn() && request.resource.data.hostUid == request.auth.uid;
+      allow update: if isHost(roomId) || canClaimHost(roomId) || canOpenProposal(roomId) || canAdvanceTimer(roomId);
+      allow delete: if isHost(roomId);
+
+      match /players/{playerId} {
+        allow read: if member(roomId) || isHost(roomId);
+        allow create: if signedIn() && request.auth.uid == playerId && rd(roomId).status == 'lobby';
+        allow update, delete: if signedIn() && (request.auth.uid == playerId || isHost(roomId));
+      }
+      match /bots/{botId} {
+        allow read: if member(roomId) || isHost(roomId);
+        allow write: if isHost(roomId);
+      }
+      match /assignments/{playerId} {
+        allow read: if signedIn() && (request.auth.uid == playerId || isHost(roomId));
+        allow write: if isHost(roomId);
+      }
+      match /botAssignments/{botId} {
+        allow read, write: if isHost(roomId);
+      }
+      match /secrets/{id} {
+        allow read, write: if isHost(roomId);
+      }
+      match /hints/{id} {
+        allow read: if member(roomId) && (resource.data.revealed == true || resource.data.playerId == request.auth.uid || isHost(roomId));
+        allow create: if member(roomId) && rd(roomId).status == 'playing'
+          && request.resource.data.gameNo == rd(roomId).gameNo
+          && (request.resource.data.playerId == request.auth.uid || isHost(roomId));
+        allow update, delete: if isHost(roomId);
+      }
+      match /messages/{id} {
+        allow read: if member(roomId);
+        allow create: if member(roomId)
+          && request.resource.data.gameNo == rd(roomId).gameNo
+          && (request.resource.data.playerId == request.auth.uid || isHost(roomId));
+        allow update: if isHost(roomId);
+        allow delete: if isHost(roomId)
+          || (member(roomId)
+            && resource.data.kind == 'voice-signal'
+            && (resource.data.playerId == request.auth.uid || resource.data.to == request.auth.uid));
+      }
+      match /voteApprovals/{id} {
+        allow read: if member(roomId);
+        allow create, update: if member(roomId)
+          && request.resource.data.gameNo == rd(roomId).gameNo
+          && (request.resource.data.playerId == request.auth.uid || isHost(roomId));
+        allow delete: if isHost(roomId);
+      }
+      match /votes/{id} {
+        allow read: if isHost(roomId) || (member(roomId) && resource.data.playerId == request.auth.uid);
+        allow create: if isHost(roomId) || (member(roomId)
+          && request.resource.data.playerId == request.auth.uid
+          && request.resource.data.gameNo == rd(roomId).gameNo);
+        allow update: if isHost(roomId) || (member(roomId)
+          && request.resource.data.playerId == request.auth.uid
+          && request.resource.data.gameNo == rd(roomId).gameNo)
+          || canConfirmBotVote(roomId);
+        allow delete: if isHost(roomId);
+      }
+      match /voteStatus/{id} {
+        allow read: if member(roomId);
+        allow create: if isHost(roomId) || (member(roomId)
+          && request.resource.data.playerId == request.auth.uid
+          && request.resource.data.gameNo == rd(roomId).gameNo);
+        allow update: if isHost(roomId) || (member(roomId)
+          && request.resource.data.playerId == request.auth.uid
+          && request.resource.data.gameNo == rd(roomId).gameNo)
+          || canConfirmBotStatus(roomId);
+        allow delete: if isHost(roomId);
+      }
+    }
+
+    // ===================== Imposteur Party (nouvelle appli) =====================
+    // Salons éphémères : l'hôte crée le salon, publie à chaque joueur SA vue,
+    // les invités envoient leurs actions et leurs messages. L'hôte efface tout à la fin.
+    function ipRoom(code) { return /databases/$(database)/documents/ip_rooms/$(code); }
+    function ipHost(code) { return signedIn() && exists(ipRoom(code)) && get(ipRoom(code)).data.host == request.auth.uid; }
+    function ipMember(code) { return signedIn() && exists(/databases/$(database)/documents/ip_rooms/$(code)/members/$(request.auth.uid)); }
+
+    match /ip_rooms/{code} {
+      allow get: if signedIn();
+      allow list: if false;
+      allow create: if signedIn() && request.resource.data.host == request.auth.uid;
+      allow update, delete: if ipHost(code);
+
+      match /members/{uid} {
+        allow read: if ipMember(code) || ipHost(code);
+        allow create, update: if signedIn() && (request.auth.uid == uid || ipHost(code));
+        allow delete: if signedIn() && (request.auth.uid == uid || ipHost(code));
+      }
+      match /views/{uid} {
+        allow read: if signedIn() && (request.auth.uid == uid || ipHost(code));
+        allow write: if ipHost(code);
+      }
+      match /actions/{id} {
+        allow create: if ipMember(code) && request.resource.data.uid == request.auth.uid;
+        allow read, delete: if ipHost(code);
+      }
+      match /chat/{id} {
+        allow read: if ipMember(code) || ipHost(code);
+        allow create: if (ipMember(code) && request.resource.data.uid == request.auth.uid && request.resource.data.text.size() <= 300) || ipHost(code);
+        allow delete: if ipHost(code);
+      }
+      match /signals/{id} {
+        allow read: if signedIn() && (resource.data.to == request.auth.uid || resource.data.from == request.auth.uid);
+        allow create: if ipMember(code) && request.resource.data.from == request.auth.uid;
+        allow delete: if signedIn() && (resource.data.to == request.auth.uid || resource.data.from == request.auth.uid || ipHost(code));
+      }
+    }
+  }
+}

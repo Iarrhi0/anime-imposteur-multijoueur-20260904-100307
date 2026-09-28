@@ -1,0 +1,13 @@
+{
+  "name": "Imposteur Party",
+  "short_name": "Imposteur",
+  "description": "Jeux d'imposteur, de bluff et de devinettes entre amis ou contre des IA.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0f0b1e",
+  "theme_color": "#0f0b1e",
+  "lang": "fr",
+  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+}
