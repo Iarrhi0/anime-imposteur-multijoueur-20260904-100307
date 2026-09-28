@@ -1699,3 +1699,18 @@ body{
   .vs-board{grid-template-columns:1fr}
   .vs-center{justify-self:center}
 }
+
+.party-secret-image{
+  width:96px;
+  height:128px;
+  object-fit:cover;
+  display:block;
+  margin:0 auto 10px;
+  border-radius:12px;
+  border:1px solid #35516e;
+}
+.party-chat-list{
+  max-height:260px;
+  overflow-y:auto;
+  -webkit-overflow-scrolling:touch;
+}
