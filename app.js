@@ -2846,7 +2846,10 @@ $$("[data-group-difficulty]").forEach(b=>b.addEventListener("click",()=>{
   $$("[data-group-difficulty]").forEach(x=>x.classList.toggle("active",x===b));
 }));
 
-$("#party-back-btn")?.addEventListener("click",()=>show("lobby"));
+$("#party-back-btn")?.addEventListener("click",()=>{
+  if(isHost)returnPartyToLobby().catch(e=>toast("Salon",e.message));
+  else toast("Partie en cours","L’hôte choisit quand revenir au salon.");
+});
 $("#party-change-game-btn")?.addEventListener("click",()=>returnPartyToLobby().catch(e=>toast("Salon",e.message)));
 $("#party-next-speaker-btn")?.addEventListener("click",()=>nextPartySpeaker().catch(e=>toast("VS",e.message)));
 $("#party-open-vote-btn")?.addEventListener("click",()=>openPartyVote().catch(e=>toast("VS",e.message)));
