@@ -31,23 +31,23 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Setup Gradle 8.9
+      - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: "8.9"
+          gradle-version: "8.10.2"
 
       - name: Build debug APK
-        run: gradle -p android assembleDebug --stacktrace
+        run: gradle -p android/android :app:assembleDebug --stacktrace
 
       - name: Rename APK
         run: |
           mkdir -p apk-output
-          cp android/app/build/outputs/apk/debug/app-debug.apk apk-output/Anime-Imposteur-v8.5.1.apk
+          cp android/android/app/build/outputs/apk/debug/app-debug.apk apk-output/Anime-Imposteur-8.6.2.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Anime-Imposteur-Android-v8.5.1
-          path: apk-output/Anime-Imposteur-v8.5.1.apk
+          name: Anime-Imposteur-Android-8.6.2
+          path: apk-output/Anime-Imposteur-8.6.2.apk
           if-no-files-found: error
           retention-days: 30
