@@ -437,7 +437,7 @@
           <div class="turn-copy"><span class="turn-kicker">DISCUSSION VOCALE</span><strong id="party-secret-instruction">Faites deviner votre groupe</strong><small id="party-secret-help">Exemples : Akatsuki, cheveux longs, épéistes, mentors…</small></div>
         </div>
         <div id="party-group-host-actions" class="two-actions">
-          <button id="party-reveal-groups-btn" class="btn secondary" type="button">Révéler les groupes</button>
+          <button id="party-reveal-groups-btn" class="btn secondary" type="button">Révéler les secrets</button>
           <button id="party-new-group-round-btn" class="btn primary" type="button">Nouvelle manche</button>
         </div>
         <div id="party-groups-result" class="hidden party-result-box"></div>
@@ -454,6 +454,20 @@
             <input id="party-chat-input" maxlength="300" enterkeyhint="send" placeholder="Écris dans le salon…">
           </div>
           <button id="party-chat-send-btn" class="send-icon-btn" type="button" aria-label="Envoyer">➤</button>
+        </div>
+      </div>
+
+      <div class="card party-chat-card">
+        <div class="section-title">
+          <div>
+            <h3>💬 Chat du salon</h3>
+            <p>Le vocal reste prioritaire, mais vous pouvez aussi écrire.</p>
+          </div>
+        </div>
+        <div id="party-chat-list" class="chat-list party-chat-list"></div>
+        <div class="chat-compose">
+          <input id="party-chat-input" maxlength="300" placeholder="Écris un message…">
+          <button id="party-send-chat-btn" type="button">Envoyer</button>
         </div>
       </div>
     </section>
