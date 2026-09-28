@@ -19,7 +19,16 @@ export const animeDB = [
   "Tokyo Ghoul",
   "Black Clover",
   "Mob Psycho 100",
-  "Saiki Kusuo"
+  "Saiki Kusuo",
+  "Chainsaw Man",
+  "Solo Leveling",
+  "One Punch Man",
+  "JoJo's Bizarre Adventure",
+  "Fullmetal Alchemist: Brotherhood",
+  "Spy x Family",
+  "Blue Lock",
+  "Haikyuu!!",
+  "Frieren: Beyond Journey's End"
 ];
 
 const C = (anime, name, popularity, appearance, personality, role, combat, story, aura) => ({
