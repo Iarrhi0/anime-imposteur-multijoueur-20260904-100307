@@ -3,13 +3,15 @@
   <uses-permission android:name="android.permission.INTERNET"/>
   <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
   <uses-permission android:name="android.permission.RECORD_AUDIO"/>
+  <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS"/>
   <application
       android:allowBackup="true"
       android:icon="@drawable/app_icon"
       android:roundIcon="@drawable/app_icon"
       android:label="Anime Imposteur"
       android:theme="@style/Theme.AnimeImposteur"
-      android:usesCleartextTraffic="false">
+      android:usesCleartextTraffic="false"
+      android:hardwareAccelerated="true">
     <activity android:name=".MainActivity" android:exported="true" android:screenOrientation="portrait">
       <intent-filter>
         <action android:name="android.intent.action.MAIN"/>
