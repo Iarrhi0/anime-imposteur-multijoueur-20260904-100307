@@ -1,10 +1,10 @@
 import { firebaseConfig } from "./firebase-config.js";
-import { VoiceEngine } from "./voice-engine.js?v=8.6.2";
-import { animeDB, chooseIntelligentPair, getAiStats } from "./ai-engine.js?v=8.6.2";
+import { VoiceEngine } from "./voice-engine.js?v=8.6.3";
+import { animeDB, chooseIntelligentPair, getAiStats } from "./ai-engine.js?v=8.6.3";
 import {
   chooseAdaptiveBotHint, chooseBotVote, botVoteApproval,
   buildBotDiscussion, shouldBotReply, botReplyDelay, resetBotMemory
-} from "./bot-engine.js?v=8.6.2";
+} from "./bot-engine.js?v=8.6.3";
 
 const $=s=>document.querySelector(s);
 const $$=s=>[...document.querySelectorAll(s)];
@@ -1885,12 +1885,12 @@ if("serviceWorker" in navigator){
       const keys=await caches.keys();
       await Promise.all(
         keys
-          .filter(k=>k.startsWith("anime-imposteur-") && k!=="anime-imposteur-v8-6-2")
+          .filter(k=>k.startsWith("anime-imposteur-") && k!=="anime-imposteur-v8-6-3")
           .map(k=>caches.delete(k))
       );
 
       const reg=await navigator.serviceWorker.register(
-        "./service-worker.js?v=8.6.2",
+        "./service-worker.js?v=8.6.3",
         {updateViaCache:"none"}
       );
       await reg.update().catch(()=>{});
