@@ -2798,13 +2798,13 @@ $("#guess-hint-btn")?.addEventListener("click",()=>{
 $("#guess-next-btn")?.addEventListener("click",()=>advanceGuessRound());
 $("#guess-input")?.addEventListener("keydown",e=>{if(e.key==="Enter")submitGuessCharacter()});
 
-$("#party-chat-send-btn")?.addEventListener("click",()=>{
+$("#party-send-chat-btn")?.addEventListener("click",()=>{
   const input=$("#party-chat-input");
   const t=input?.value||"";
   if(input)input.value="";
   sendMessage(t).catch(e=>toast("Chat",e.message));
 });
-$("#party-chat-input")?.addEventListener("keydown",e=>{if(e.key==="Enter")$("#party-chat-send-btn")?.click()});
+$("#party-chat-input")?.addEventListener("keydown",e=>{if(e.key==="Enter")$("#party-send-chat-btn")?.click()});
 
 $("#open-group-mode-btn")?.addEventListener("click",openGuessGroupMode);
 $("#group-back-btn")?.addEventListener("click",()=>show("home"));
