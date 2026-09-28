@@ -5,11 +5,11 @@ import {
 
 const ANILIST_ENDPOINT="https://graphql.anilist.co";
 const CACHE_KEY="anime_imposteur_online_characters_v1";
-const CACHE_TTL_MS=6*60*60*1000;
+const CACHE_TTL_MS=12*60*60*1000;
 const RECENT_CHAR_KEY="anime_imposteur_recent_characters_v2";
 const RECENT_PAIR_KEY="anime_imposteur_recent_pairs_v2";
-const MAX_RECENT_CHARS=24;
-const MAX_RECENT_PAIRS=36;
+const MAX_RECENT_CHARS=80;
+const MAX_RECENT_PAIRS=200;
 
 const localByName=new Map(localCharacters.map(c=>[norm(c.name),c]));
 let memoryPool=null;
@@ -264,7 +264,7 @@ export async function getOnlineCharacterPool({force=false}={}){
     }
   }
 
-  const pages=await Promise.all([1,2,3].map(p=>fetchPage(p,50)));
+  const pages=await Promise.all([1,2,3,4,5,6].map(p=>fetchPage(p,50)));
   const pool=pages.flat()
     .map(profileFromAniList)
     .filter(Boolean)
@@ -580,7 +580,7 @@ export async function chooseOnlineIntelligentPair({
     const ax=Math.abs(x.score-band.target), ay=Math.abs(y.score-band.target);
     return ax-ay || y.weight-x.weight;
   });
-  const broadPool=candidates.slice(0,Math.min(80,candidates.length));
+  const broadPool=candidates.slice(0,Math.min(240,candidates.length));
   const chosen=chooseWeighted(broadPool,p=>p.weight);
   remember(chosen.a,chosen.b);
   return chosen;
