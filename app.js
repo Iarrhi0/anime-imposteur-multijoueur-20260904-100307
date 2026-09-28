@@ -2762,7 +2762,7 @@ $("#party-new-group-round-btn")?.addEventListener("click",()=>startGroupParty().
 
 $$("[data-guess-play]").forEach(b=>b.addEventListener("click",()=>{
   guessSettings.play=b.dataset.guessPlay;
-  $("[data-guess-play]").forEach(x=>x.classList.toggle("active",x===b));
+  $$("[data-guess-play]").forEach(x=>x.classList.toggle("active",x===b));
   guessChallenge=null;guessDuelRound=0;guessDuelScores=[null,null];
   $("#guess-game-card")?.classList.add("hidden");
   $("#guess-start-btn")?.classList.remove("hidden");
