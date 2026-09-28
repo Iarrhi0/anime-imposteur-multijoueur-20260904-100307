@@ -1,5 +1,5 @@
 export const voiceConfig = {
-  // Optional endpoint that returns { iceServers: [...] } with short-lived TURN credentials.
-  // Leave empty to use free STUN/P2P only.
+  // Final free mode: direct WebRTC using free STUN.
+  // No external account, token server, audio storage or paid relay is required.
   turnCredentialsUrl: ""
 };
