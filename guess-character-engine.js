@@ -1,4 +1,5 @@
-import { getOnlineCharacterPool } from "./online-character-engine.js?v=9.0.0";
+import { getOnlineCharacterPool } from "./online-character-engine.js?v=10.0.0";
+import { characters as localCharacters } from "./ai-engine.js?v=10.0.0";
 
 function norm(v){
   return String(v||"")
@@ -61,13 +62,27 @@ function acceptedAnswers(c){
   return set;
 }
 
+function localFallbackPool(){
+  return (localCharacters||[]).map((c,i)=>({
+    id:"local_"+i,
+    name:c.name,
+    anime:c.anime,
+    imageUrl:"",
+    favourites:c.popularity||100,
+    traits:c.traits||{},
+    source:"local"
+  }));
+}
+
 export async function newGuessCharacterChallenge({difficulty="normal"}={}){
-  const pool=await getOnlineCharacterPool();
+  let pool=[];
+  try{pool=await getOnlineCharacterPool()}catch{}
+  if(!pool?.length)pool=localFallbackPool();
   if(!pool?.length)throw new Error("Catalogue de personnages indisponible.");
 
   const minFav=difficulty==="easy"?2500:difficulty==="hard"?500:1200;
-  let candidates=pool.filter(c=>Number(c.favourites||0)>=minFav && c.imageUrl);
-  if(candidates.length<20)candidates=pool.filter(c=>c.imageUrl);
+  let candidates=pool.filter(c=>Number(c.favourites||0)>=minFav && (c.imageUrl||c.source==="local"));
+  if(candidates.length<20)candidates=pool;
   const character=candidates[Math.floor(Math.random()*candidates.length)];
 
   let clues=buildClues(character);

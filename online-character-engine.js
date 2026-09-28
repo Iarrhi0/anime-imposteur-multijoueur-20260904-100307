@@ -1,7 +1,7 @@
 import {
   characters as localCharacters,
   chooseIntelligentPair as chooseLocalPair
-} from "./ai-engine.js?v=8.7.0";
+} from "./ai-engine.js?v=10.0.0";
 
 const ANILIST_ENDPOINT="https://graphql.anilist.co";
 const CACHE_KEY="anime_imposteur_online_characters_v1";

@@ -1,17 +1,24 @@
 import { firebaseConfig } from "./firebase-config.js";
-import { VoiceEngine } from "./voice-engine.js?v=9.0.0";
-import { animeDB, chooseIntelligentPair } from "./ai-engine.js?v=9.0.0";
-import { chooseOnlineIntelligentPair, warmOnlineCharacterPool, getOnlineEngineInfo } from "./online-character-engine.js?v=9.0.0";
-import { chooseUniverseConceptPair, conceptEngineStats } from "./concept-engine.js?v=9.0.0";
+import { VoiceEngine } from "./voice-engine.js?v=10.0.0";
+import { animeDB, characters as localCharacters, chooseIntelligentPair } from "./ai-engine.js?v=10.0.0";
+import { chooseOnlineIntelligentPair, warmOnlineCharacterPool, getOnlineCharacterPool, getOnlineEngineInfo } from "./online-character-engine.js?v=10.0.0";
+import { chooseUniverseConceptPair, conceptEngineStats } from "./concept-engine.js?v=10.0.0";
 import {
   newGuessCharacterChallenge,
   submitCharacterGuess,
   revealGuessHint
-} from "./guess-character-engine.js?v=9.0.0";
+} from "./guess-character-engine.js?v=10.0.0";
+import {
+  newGuessGroupChallenge,
+  submitGroupGuess,
+  revealGroupHint,
+  allGuessGroups
+} from "./group-engine.js?v=10.0.0";
+import { newVsPrompt, vsStats } from "./vs-engine.js?v=10.0.0";
 import {
   chooseAdaptiveBotHint, chooseBotVote, botVoteApproval,
   buildBotDiscussion, shouldBotReply, botReplyDelay, resetBotMemory
-} from "./bot-engine.js?v=9.0.0";
+} from "./bot-engine.js?v=10.0.0";
 
 const $=s=>document.querySelector(s);
 const $$=s=>[...document.querySelectorAll(s)];
@@ -60,6 +67,15 @@ const guessSettings={play:"solo",difficulty:"normal"};
 let guessChallenge=null;
 let guessDuelRound=0;
 let guessDuelScores=[null,null];
+
+const groupSettings={play:"solo",difficulty:"normal"};
+let groupChallenge=null;
+let groupDuelRound=0;
+let groupDuelScores=[null,null];
+
+let partyAssignment=null;
+let partyVotes=[];
+let firebaseInitPromise=null;
 
 const esc=s=>String(s??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]));
 const norm=s=>String(s||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"");
@@ -123,40 +139,81 @@ function cleanupRoom(){
   discussionMode="text";
   playersReady=false;botsReady=false;
   hints=[];messages=[];voteApprovals=[];voteStatuses=[];
+  partyAssignment=null;partyVotes=[];
   lastHintIds.clear();lastMessageIds.clear();
   collectionReady={hints:false,messages:false,approvals:false,voteStatus:false};
 }
 
 async function initFirebase(){
-  if(!firebaseConfig){
-    $("#fatal-config").classList.remove("hidden");
-    $("#fatal-config").innerHTML="<strong>Firebase non configuré.</strong><span>Relance le déploiement V7.1.</span>";
-    return;
-  }
-  try{
-    const appMod=await import("https://www.gstatic.com/firebasejs/12.2.1/firebase-app.js");
-    const authMod=await import("https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js");
-    const fsMod=await import("https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js");
-    const app=appMod.initializeApp(firebaseConfig);
-    auth=authMod.getAuth(app);db=fsMod.getFirestore(app);fb={authMod,fsMod};
-    voiceEngine=new VoiceEngine({onChange:()=>renderVoicePanel(),toast});
-    voiceEngine.setFirebase({db,fsMod});
-    authMod.onAuthStateChanged(auth,async user=>{
-      if(!user){try{await authMod.signInAnonymously(auth)}catch(e){toast("Firebase",e.message)};return}
-      currentUser=user;$("#connection-dot").classList.add("online");
-      const saved=localStorage.getItem("anime_room");
-      if(saved)resumeRoom(saved).catch(()=>localStorage.removeItem("anime_room"));
-    });
-  }catch(e){
-    $("#fatal-config").classList.remove("hidden");
-    $("#fatal-config").innerHTML=`<strong>Firebase ne charge pas.</strong><span>${esc(e.message)}</span>`;
-  }
+  if(firebaseInitPromise)return firebaseInitPromise;
+
+  firebaseInitPromise=(async()=>{
+    if(!firebaseConfig){
+      $("#fatal-config").classList.remove("hidden");
+      $("#fatal-config").innerHTML="<strong>Firebase non configuré.</strong><span>Les jeux locaux restent disponibles.</span>";
+      return false;
+    }
+
+    try{
+      const [appMod,authMod,fsMod]=await Promise.all([
+        import("https://www.gstatic.com/firebasejs/12.2.1/firebase-app.js"),
+        import("https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js"),
+        import("https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js")
+      ]);
+
+      const app=appMod.initializeApp(firebaseConfig);
+      auth=authMod.getAuth(app);
+      db=fsMod.getFirestore(app);
+      fb={authMod,fsMod};
+
+      voiceEngine=new VoiceEngine({onChange:()=>renderVoicePanel(),toast});
+      voiceEngine.setFirebase({db,fsMod});
+
+      authMod.onAuthStateChanged(auth,async user=>{
+        if(!user){
+          try{await authMod.signInAnonymously(auth)}
+          catch(e){console.warn("Anonymous auth",e)}
+          return;
+        }
+
+        currentUser=user;
+        $("#connection-dot")?.classList.add("online");
+        $("#fatal-config")?.classList.add("hidden");
+
+        const saved=localStorage.getItem("anime_room");
+        if(saved&&!currentRoom){
+          resumeRoom(saved).catch(()=>localStorage.removeItem("anime_room"));
+        }
+      });
+
+      if(!auth.currentUser){
+        await authMod.signInAnonymously(auth).catch(()=>{});
+      }
+      return true;
+    }catch(e){
+      firebaseInitPromise=null;
+      console.warn("Firebase init",e);
+      $("#connection-dot")?.classList.remove("online");
+      return false;
+    }
+  })();
+
+  return firebaseInitPromise;
 }
+
 async function ensureUserReady(){
   if(currentUser&&fb&&db)return currentUser;
-  toast("Connexion…","Initialisation.");
-  for(let i=0;i<40;i++){if(currentUser&&fb&&db)return currentUser;await sleep(250)}
-  throw new Error("Firebase n’est pas prêt.");
+
+  toast("Connexion…","Préparation du salon à distance.");
+  await initFirebase().catch(()=>false);
+
+  // Les connexions mobiles lentes peuvent prendre largement plus de 10 secondes.
+  for(let i=0;i<120;i++){
+    if(currentUser&&fb&&db)return currentUser;
+    await sleep(250);
+  }
+
+  throw new Error("Le salon en ligne n’est pas encore prêt. Réessaie dans quelques secondes. Les jeux locaux restent disponibles.");
 }
 
 function participants(){return [...players,...bots]}
@@ -220,7 +277,8 @@ async function createRoom({solo=false}={}){
 
     await setDoc(doc(db,"rooms",code),{
       hostUid:currentUser.uid,hostLeaseUntil:Timestamp.fromMillis(now()+HOST_LEASE_MS),
-      status:"lobby",gameNo:0,hintRound:0,turnIndex:0,order:[],roster:[],activeIds:[],
+      status:"lobby",selectedMode:"impostor",partySession:null,
+      gameNo:0,hintRound:0,turnIndex:0,order:[],roster:[],activeIds:[],
       hiddenHints:false,reconsiderSeconds:15,voteProposal:null,voteRound:0,
       voteStage:null,voteCandidates:[],voteVoters:[],reconsiderEndsAt:null,result:null,createdAt:serverTimestamp()
     });
@@ -381,8 +439,18 @@ async function enterRoom(code){
     }
   }));
   roomUnsubs.push(onSnapshot(doc(db,"rooms",code,"assignments",currentUser.uid),snap=>{
-    assignment=snap.exists()?snap.data():null;renderCharacter();
+    const data=snap.exists()?snap.data():null;
+    if(data?.kind==="party-group"||data?.kind==="party-character"){
+      partyAssignment=data;
+      assignment=null;
+    }else{
+      assignment=data;
+      if(currentRoomData?.status!=="party")partyAssignment=null;
+    }
+    renderCharacter();
+    if(currentRoomData?.status==="party")scheduleRender();
   }));
+
   startHeartbeat();startHostClaimWatcher();
 }
 
@@ -509,7 +577,8 @@ function subscribeGameData(gameNo){
       }
     });
 
-    const next=all.filter(m=>m.kind!=="voice-signal");
+    partyVotes=all.filter(m=>m.kind==="party-vote");
+    const next=all.filter(m=>m.kind!=="voice-signal"&&m.kind!=="party-vote");
     const fresh=[];
     if(collectionReady.messages){
       for(const m of next){
@@ -853,7 +922,7 @@ async function sendHint(){
 }
 async function sendMessage(text,playerId=currentUser.uid,playerName=null){
   text=String(text||"").trim().slice(0,300);if(!text)return;
-  if(!["playing","voting","postvote"].includes(currentRoomData?.status))return;
+  if(!["playing","voting","postvote","party"].includes(currentRoomData?.status))return;
   await fb.fsMod.addDoc(fb.fsMod.collection(db,"rooms",currentRoom,"messages"),{
     gameNo:currentRoomData.gameNo,playerId,playerName:playerName||participantById(playerId)?.name||"Joueur",
     text,createdMs:now()
@@ -1465,16 +1534,351 @@ async function processBotQueue(){
   finally{botQueueBusy=false;if(botMessageQueue.length)setTimeout(processBotQueue,80)}
 }
 
+async function clearPartyCollection(name){
+  if(!isHost||!fb||!currentRoom)return;
+  const snap=await fb.fsMod.getDocs(fb.fsMod.collection(db,"rooms",currentRoom,name));
+  if(snap.empty)return;
+
+  let batch=fb.fsMod.writeBatch(db);
+  let n=0;
+  for(const d of snap.docs){
+    batch.delete(d.ref);
+    n++;
+    if(n>=400){
+      await batch.commit();
+      batch=fb.fsMod.writeBatch(db);
+      n=0;
+    }
+  }
+  if(n)await batch.commit();
+}
+
+async function clearPartyVoteMessages(){
+  if(!isHost||!fb||!currentRoom)return;
+  const snap=await fb.fsMod.getDocs(
+    fb.fsMod.query(
+      fb.fsMod.collection(db,"rooms",currentRoom,"messages"),
+      fb.fsMod.where("gameNo","==",currentRoomData?.gameNo||0)
+    )
+  );
+
+  const partyDocs=snap.docs.filter(d=>d.data()?.kind==="party-vote");
+  if(!partyDocs.length)return;
+
+  const batch=fb.fsMod.writeBatch(db);
+  partyDocs.forEach(d=>batch.delete(d.ref));
+  await batch.commit();
+  partyVotes=[];
+}
+
+async function setRoomMode(mode){
+  if(!isHost||!currentRoom)return;
+  await fb.fsMod.updateDoc(
+    fb.fsMod.doc(db,"rooms",currentRoom),
+    {selectedMode:mode}
+  );
+}
+
+async function startSelectedRoomMode(){
+  if(!isHost)return;
+  const mode=currentRoomData?.selectedMode||"impostor";
+  if(mode==="vs")return startVsParty();
+  if(mode==="guess-group")return startGroupParty();
+  if(mode==="guess-character")return startCharacterParty();
+  return startGame();
+}
+
+async function startVsParty(){
+  if(!isHost)return;
+  const humans=players.filter(p=>now()-(p.lastSeenMs||0)<OFFLINE_DROP_MS);
+  if(humans.length<2)return toast("VS vocal","2 joueurs humains minimum.");
+
+  await clearPartyVoteMessages();
+
+  const prev=currentRoomData?.partySession;
+  const round=(prev?.mode==="vs"?Number(prev.round||0):0)+1;
+  const prompt=newVsPrompt();
+  const session={
+    id:prompt.id,
+    mode:"vs",
+    phase:"discussion",
+    round,
+    prompt,
+    speakerIndex:0,
+    createdMs:now(),
+    result:null
+  };
+
+  await fb.fsMod.updateDoc(
+    fb.fsMod.doc(db,"rooms",currentRoom),
+    {
+      status:"party",
+      selectedMode:"vs",
+      partySession:session
+    }
+  );
+}
+
+async function nextPartySpeaker(){
+  if(!isHost)return;
+  const s=currentRoomData?.partySession;
+  if(!s||s.mode!=="vs"||s.phase!=="discussion")return;
+
+  const humans=players.filter(p=>now()-(p.lastSeenMs||0)<OFFLINE_DROP_MS);
+  const next=humans.length?((Number(s.speakerIndex||0)+1)%humans.length):0;
+
+  await fb.fsMod.updateDoc(
+    fb.fsMod.doc(db,"rooms",currentRoom),
+    {"partySession.speakerIndex":next}
+  );
+}
+
+async function openPartyVote(){
+  if(!isHost)return;
+  const s=currentRoomData?.partySession;
+  if(!s||s.mode!=="vs")return;
+
+  await clearPartyVoteMessages();
+  await fb.fsMod.updateDoc(
+    fb.fsMod.doc(db,"rooms",currentRoom),
+    {
+      "partySession.phase":"vote",
+      "partySession.result":null
+    }
+  );
+}
+
+async function castPartyVote(choice){
+  const s=currentRoomData?.partySession;
+  if(!s||s.mode!=="vs"||s.phase!=="vote"||!currentUser)return;
+  if(!["A","B"].includes(choice))return;
+
+  await fb.fsMod.setDoc(
+    fb.fsMod.doc(db,"rooms",currentRoom,"messages",`partyvote_${s.id}_${currentUser.uid}`),
+    {
+      kind:"party-vote",
+      sessionId:s.id,
+      playerId:currentUser.uid,
+      playerName:participantById(currentUser.uid)?.name||"Joueur",
+      choice,
+      gameNo:currentRoomData?.gameNo||0,
+      createdMs:now()
+    }
+  );
+}
+
+async function finishPartyVote(){
+  if(!isHost)return;
+  const s=currentRoomData?.partySession;
+  if(!s||s.mode!=="vs"||s.phase!=="vote")return;
+
+  const votes=partyVotes.filter(v=>v.sessionId===s.id);
+  const a=votes.filter(v=>v.choice==="A").length;
+  const b=votes.filter(v=>v.choice==="B").length;
+
+  await fb.fsMod.updateDoc(
+    fb.fsMod.doc(db,"rooms",currentRoom),
+    {
+      "partySession.phase":"result",
+      "partySession.result":{a,b,total:votes.length,closedMs:now()}
+    }
+  );
+}
+
+async function startCharacterParty(){
+  if(!isHost)return;
+  const humans=players.filter(p=>now()-(p.lastSeenMs||0)<OFFLINE_DROP_MS);
+  if(humans.length<2)return toast("Devine mon personnage","2 joueurs humains minimum.");
+
+  await clearPartyVoteMessages();
+
+  let pool=[];
+  try{pool=await getOnlineCharacterPool()}catch{}
+  if(!pool?.length){
+    pool=(localCharacters||[]).map((x,i)=>({
+      id:"local_"+i,
+      name:x.name,
+      anime:x.anime,
+      imageUrl:"",
+      traits:x.traits||{}
+    }));
+  }
+  if(pool.length<humans.length)return toast("Personnages","Catalogue insuffisant.");
+
+  const picks=shuffle(pool).slice(0,humans.length);
+  const prev=currentRoomData?.partySession;
+  const round=(prev?.mode==="guess-character"?Number(prev.round||0):0)+1;
+  const sessionId=`char_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+
+  const batch=fb.fsMod.writeBatch(db);
+  humans.forEach((p,i)=>{
+    const ch=picks[i];
+    batch.set(
+      fb.fsMod.doc(db,"rooms",currentRoom,"assignments",p.id),
+      {
+        kind:"party-character",
+        sessionId,
+        playerId:p.id,
+        playerName:p.name,
+        name:ch.name,
+        type:"personnage",
+        anime:ch.anime,
+        imageUrl:ch.imageUrl||"",
+        createdMs:now()
+      }
+    );
+  });
+  await batch.commit();
+
+  await fb.fsMod.updateDoc(
+    fb.fsMod.doc(db,"rooms",currentRoom),
+    {
+      status:"party",
+      selectedMode:"guess-character",
+      partySession:{
+        id:sessionId,
+        mode:"guess-character",
+        phase:"discussion",
+        round,
+        createdMs:now(),
+        revealedGroups:[]
+      }
+    }
+  );
+}
+
+async function startGroupParty(){
+  if(!isHost)return;
+  const humans=players.filter(p=>now()-(p.lastSeenMs||0)<OFFLINE_DROP_MS);
+  if(humans.length<2)return toast("Devine mon groupe","2 joueurs humains minimum.");
+
+  await clearPartyVoteMessages();
+
+  const groups=shuffle(allGuessGroups());
+  const prev=currentRoomData?.partySession;
+  const round=(prev?.mode==="guess-group"?Number(prev.round||0):0)+1;
+  const sessionId=`group_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+
+  const batch=fb.fsMod.writeBatch(db);
+  humans.forEach((p,i)=>{
+    const g=groups[i%groups.length];
+    batch.set(
+      fb.fsMod.doc(db,"rooms",currentRoom,"assignments",p.id),
+      {
+        kind:"party-group",
+        sessionId,
+        playerId:p.id,
+        playerName:p.name,
+        name:g.name,
+        type:g.type,
+        anime:g.anime,
+        clues:g.clues,
+        examples:g.examples,
+        createdMs:now()
+      }
+    );
+  });
+  await batch.commit();
+
+  await fb.fsMod.updateDoc(
+    fb.fsMod.doc(db,"rooms",currentRoom),
+    {
+      status:"party",
+      selectedMode:"guess-group",
+      partySession:{
+        id:sessionId,
+        mode:"guess-group",
+        phase:"discussion",
+        round,
+        createdMs:now(),
+        revealedGroups:[]
+      }
+    }
+  );
+}
+
+async function revealPartyGroups(){
+  if(!isHost)return;
+  const s=currentRoomData?.partySession;
+  if(!s||!["guess-group","guess-character"].includes(s.mode))return;
+
+  const snap=await fb.fsMod.getDocs(
+    fb.fsMod.collection(db,"rooms",currentRoom,"assignments")
+  );
+
+  const revealed=snap.docs
+    .map(d=>d.data())
+    .filter(x=>x.sessionId===s.id)
+    .map(x=>({
+      playerId:x.playerId,
+      playerName:x.playerName,
+      name:x.name,
+      type:x.type,
+      anime:x.anime
+    }));
+
+  await fb.fsMod.updateDoc(
+    fb.fsMod.doc(db,"rooms",currentRoom),
+    {
+      "partySession.phase":"result",
+      "partySession.revealedGroups":revealed
+    }
+  );
+}
+
+async function returnPartyToLobby(){
+  if(!isHost)return;
+  await fb.fsMod.updateDoc(
+    fb.fsMod.doc(db,"rooms",currentRoom),
+    {
+      status:"lobby",
+      partySession:null
+    }
+  );
+}
+
 function renderAll(){
-  if(!currentRoomData){show("home");return}
+  if(!currentRoomData){
+    if(["guess-character","guess-group"].includes(currentScreen))return;
+    show("home");
+    return;
+  }
+
   voiceEngine?.setGameNo(currentRoomData.gameNo||0);
   voiceEngine?.updateMembers(players);
-  renderRoomRole();routeByStatus();renderLobbyPlayers();renderGameHeader();renderGamePlayers();
-  renderHints();renderMessages();renderVoicePanel();renderProposal();renderVoting();renderScores();renderBadges();
+
+  renderRoomRole();
+  routeByStatus();
+  renderLobbyPlayers();
+  renderPartySession();
+  renderGameHeader();
+  renderGamePlayers();
+  renderHints();
+  renderMessages();
+  renderPartyChat();
+  renderVoicePanel();
+  renderProposal();
+  renderVoting();
+  renderScores();
+  renderBadges();
+
   if(currentRoomData.status==="postvote")renderResult();
 }
+
 function routeByStatus(){
-  const s=currentRoomData.status;if(s==="lobby"){show("lobby");return}show("game");
+  const s=currentRoomData.status;
+
+  if(s==="lobby"){
+    show("lobby");
+    return;
+  }
+
+  if(s==="party"){
+    show("party");
+    return;
+  }
+
+  show("game");
   const chat=activeTab==="chat",vote=s==="voting",post=s==="postvote";
 
   $("#game-chat-panel").classList.toggle("hidden",!chat);
@@ -1495,15 +1899,146 @@ function renderRoomRole(){
   patchText("#my-role-pill",isHost?"👑 Hôte":"Joueur");
 }
 function renderLobbyPlayers(){
-  const all=participants();patchText("#player-count",`${all.length} joueur${all.length>1?"s":""}`);
+  const all=participants();
+  const humans=players.filter(p=>now()-(p.lastSeenMs||0)<OFFLINE_DROP_MS);
+
+  patchText("#player-count",`${all.length} joueur${all.length>1?"s":""}`);
   patchHTML("#players-list",all.map(p=>{
-    const host=!p.bot&&p.id===currentRoomData?.hostUid,me=!p.bot&&p.id===currentUser?.uid,online=p.bot||now()-(p.lastSeenMs||0)<OFFLINE_DROP_MS;
+    const host=!p.bot&&p.id===currentRoomData?.hostUid;
+    const me=!p.bot&&p.id===currentUser?.uid;
+    const online=p.bot||now()-(p.lastSeenMs||0)<OFFLINE_DROP_MS;
     return `<div class="player-row"><div class="avatar ${p.bot?"bot":""}">${p.bot?"🤖":esc((p.name||"?")[0].toUpperCase())}</div>
       <div class="player-meta"><div class="player-name">${esc(p.name)}</div><div class="player-sub">${p.bot?`IA • ${esc(p.difficulty||"Normal")}`:host?"👑 Hôte":me?"Toi":online?"À distance":"Hors ligne"}</div></div>
       ${isHost&&p.bot?`<button class="remove-bot" data-remove-bot="${p.id}">×</button>`:`<span class="${online?"status-ok":"status-off"}">●</span>`}</div>`;
   }).join(""));
-  $("#start-game-btn").disabled=all.length<3;$("#start-game-btn").textContent=all.length<3?"3 participants minimum":"Commencer la partie";
+
+  const mode=currentRoomData?.selectedMode||"impostor";
+  $$("[data-room-mode]").forEach(btn=>btn.classList.toggle("active",btn.dataset.roomMode===mode));
+
+  const start=$("#start-game-btn");
+  if(!start)return;
+
+  if(mode==="impostor"){
+    start.disabled=all.length<3;
+    start.textContent=all.length<3?"3 participants minimum":"🎭 Lancer Anime Imposteur";
+  }else if(mode==="guess-character"){
+    start.disabled=humans.length<2;
+    start.textContent=humans.length<2?"2 joueurs humains minimum":"🕵️ Lancer Devine mon personnage";
+  }else if(mode==="guess-group"){
+    start.disabled=humans.length<2;
+    start.textContent=humans.length<2?"2 joueurs humains minimum":"👥 Lancer Devine mon groupe";
+  }else if(mode==="vs"){
+    start.disabled=humans.length<2;
+    start.textContent=humans.length<2?"2 joueurs humains minimum":"⚔️ Lancer le VS vocal";
+  }else{
+    start.disabled=false;
+    start.textContent="Lancer le jeu";
+  }
 }
+function renderPartySession(){
+  if(currentRoomData?.status!=="party")return;
+
+  const session=currentRoomData.partySession||{};
+  const mode=session.mode||"vs";
+  patchText("#party-room-code",currentRoom||"-----");
+  $("#party-change-game-btn")?.classList.toggle("hidden",!isHost);
+  patchText(
+    "#party-round-label",
+    `${mode==="vs"?"VS vocal":mode==="guess-character"?"Devine mon personnage":"Devine mon groupe"} • Manche ${session.round||1}`
+  );
+
+  $("#party-vs-panel")?.classList.toggle("hidden",mode!=="vs");
+  $("#party-group-panel")?.classList.toggle("hidden",!["guess-group","guess-character"].includes(mode));
+
+  if(mode==="vs"){
+    const p=session.prompt||{};
+    patchText("#party-vs-question",p.question||"Débattez puis votez.");
+    patchText("#party-vs-a",p.a||"A");
+    patchText("#party-vs-b",p.b||"B");
+
+    const humans=players.filter(x=>now()-(x.lastSeenMs||0)<OFFLINE_DROP_MS);
+    const speaker=humans.length?humans[(session.speakerIndex||0)%humans.length]:null;
+    patchText("#party-speaker-name",speaker?.name||"Discussion libre");
+
+    const phase=session.phase||"discussion";
+    $("#party-discussion-actions")?.classList.toggle("hidden",phase!=="discussion");
+    $("#party-vote-actions")?.classList.toggle("hidden",phase!=="vote");
+    $("#party-result-box")?.classList.toggle("hidden",phase!=="result");
+
+    $("#party-next-speaker-btn")?.classList.toggle("hidden",!isHost);
+    $("#party-open-vote-btn")?.classList.toggle("hidden",!isHost);
+
+    const sessionVotes=partyVotes.filter(v=>v.sessionId===session.id);
+    const mine=sessionVotes.find(v=>v.playerId===currentUser?.uid);
+    $$("[data-party-vote]").forEach(btn=>{
+      btn.disabled=phase!=="vote"||!!mine;
+      btn.classList.toggle("active",mine?.choice===btn.dataset.partyVote);
+    });
+
+    patchText(
+      "#party-vote-status",
+      mine
+        ?`Ton vote : ${mine.choice}`
+        :`${sessionVotes.length}/${humans.length} vote${sessionVotes.length>1?"s":""}`
+    );
+
+    $("#party-finish-vote-btn")?.classList.toggle(
+      "hidden",
+      !(isHost&&phase==="vote"&&sessionVotes.length>=Math.max(1,humans.length))
+    );
+
+    if(phase==="result"){
+      const result=session.result||{};
+      const a=Number(result.a||0),b=Number(result.b||0);
+      const winner=a===b?"Égalité":a>b?(p.a||"A"):(p.b||"B");
+      patchHTML(
+        "#party-result-box",
+        `<strong>${esc(winner)}</strong><span>${esc(p.a||"A")} : ${a} vote${a>1?"s":""} • ${esc(p.b||"B")} : ${b} vote${b>1?"s":""}</span>${isHost?'<button class="btn primary" data-new-vs-round type="button">Nouvelle discussion</button>':""}`
+      );
+    }
+  }
+
+  if(mode==="guess-group"||mode==="guess-character"){
+    const revealed=session.phase==="result";
+    const isCharacter=mode==="guess-character";
+    patchText("#party-secret-kicker",isCharacter?"DEVINE MON PERSONNAGE":"DEVINE MON GROUPE");
+    patchText("#party-secret-title",isCharacter?"Chacun reçoit un personnage secret.":"Chacun reçoit un groupe secret.");
+    patchText("#party-secret-label",isCharacter?"TON PERSONNAGE":"TON GROUPE");
+    patchText("#party-secret-instruction",isCharacter?"Faites deviner votre personnage":"Faites deviner votre groupe");
+    patchText("#party-secret-help",isCharacter?"Donnez des indices à l’oral sans dire le nom.":"Exemples : Akatsuki, cheveux longs, épéistes, mentors…");
+    const box=$("#party-my-group");
+    const visible=box?.dataset.visible==="1"||revealed;
+    const group=partyAssignment?.sessionId===session.id?partyAssignment:null;
+
+    if(box){
+      const strong=box.querySelector("strong");
+      const p=box.querySelector("p");
+      if(strong)strong.textContent=visible?(group?.name||(isCharacter?"Personnage non attribué":"Groupe non attribué")):"••••••";
+      if(p)p.textContent=visible?(group?.anime||group?.type||""):"";
+    }
+    const secretImg=$("#party-secret-image");
+    if(secretImg){
+      const showImg=isCharacter&&visible&&!!group?.imageUrl;
+      secretImg.classList.toggle("hidden",!showImg);
+      if(showImg)secretImg.src=group.imageUrl;
+    }
+
+    $("#party-toggle-group-btn")?.classList.toggle("hidden",revealed);
+    $("#party-group-host-actions")?.classList.toggle("hidden",!isHost);
+
+    const result=$("#party-groups-result");
+    result?.classList.toggle("hidden",!revealed);
+    if(revealed&&result){
+      const rows=(session.revealedGroups||[])
+        .map(x=>`<div class="player-row"><div class="avatar">${esc((x.playerName||"?")[0])}</div><div class="player-meta"><div class="player-name">${esc(x.playerName||"Joueur")}</div><div class="player-sub">${esc(x.name||"")}</div></div></div>`)
+        .join("");
+      result.innerHTML=rows||"<span>Aucun groupe révélé.</span>";
+    }
+  }
+
+  renderVoicePanel();
+}
+
 function renderGameHeader(){
   patchText("#game-round-label",`Partie ${currentRoomData.gameNo||0} • Tranche ${currentRoomData.hintRound||0}`);
   patchText("#tranche-pill",`Tranche ${currentRoomData.hintRound||1}`);
@@ -1559,6 +2094,39 @@ function renderMessages(){
   list.__key=key;if(near||!list.__done){list.scrollTop=list.scrollHeight;list.__done=true}
 }
 
+async function joinCurrentVoice(){
+  if(!currentRoom||!currentUser||!voiceEngine){
+    await ensureUserReady();
+  }
+  if(!currentRoom)throw new Error("Entre d’abord dans un salon.");
+
+  const me=participantById(currentUser?.uid);
+  const authToken=await currentUser.getIdToken();
+  await voiceEngine.join({
+    roomId:currentRoom,
+    uid:currentUser.uid,
+    name:me?.name||safeName($("#home-name")?.value),
+    authToken,
+    gameNo:currentRoomData?.gameNo||0,
+    knownPlayers:players
+  });
+  voiceEngine.updateMembers(players);
+}
+
+function renderPartyChat(){
+  const list=$("#party-chat-list");
+  if(!list)return;
+
+  const data=messages.slice(-80);
+  const key=data.map(m=>m.id).join(",");
+  if(list.__key===key)return;
+
+  const near=list.scrollHeight-list.scrollTop-list.clientHeight<90;
+  list.innerHTML=data.map(m=>`<div class="message ${m.playerId===currentUser?.uid?"me":""}"><div class="who">${esc(m.playerName)}</div><div class="body">${esc(m.text)}</div></div>`).join("");
+  list.__key=key;
+  if(near||!list.__done){list.scrollTop=list.scrollHeight;list.__done=true}
+}
+
 function renderVoicePanel(){
   const textMode=discussionMode==="text";
   $("#text-discussion-panel")?.classList.toggle("hidden",!textMode);
@@ -1567,39 +2135,42 @@ function renderVoicePanel(){
 
   if(!voiceEngine)return;
   const s=voiceEngine.getState();
-  const join=$("#voice-join-btn"),controls=$("#voice-controls"),mute=$("#voice-mute-btn");
-  if(join){
+
+  $$("[data-voice-join]").forEach(join=>{
     join.classList.toggle("hidden",s.joined);
     join.disabled=s.joining;
     join.textContent=s.joining?"Connexion au micro…":"🎙 Rejoindre le vocal";
-  }
-  controls?.classList.toggle("hidden",!s.joined);
-  if(mute)mute.textContent=s.muted?"🎙 Réactiver le micro":"🔇 Couper le micro";
+  });
+
+  $$("[data-voice-controls]").forEach(el=>el.classList.toggle("hidden",!s.joined));
+  $$("[data-voice-mute]").forEach(btn=>{
+    btn.textContent=s.muted?"🎙 Réactiver le micro":"🔇 Couper le micro";
+  });
 
   const mode=s.hasTurn?"P2P + TURN":"P2P / STUN";
-  patchText(
-    "#voice-status",
-    s.joining
-      ?"Demande d’accès au microphone…"
-      :s.joined
-        ?`Connecté • ${s.members.length} participant${s.members.length>1?"s":""} • ${mode}`
-        :"Rejoins le salon vocal de cette salle."
-  );
+  const status=s.joining
+    ?"Demande d’accès au microphone…"
+    :s.joined
+      ?`Connecté • ${s.members.length} participant${s.members.length>1?"s":""} • ${mode}`
+      :"Rejoins le salon vocal. Il reste actif quand vous changez de jeu.";
+
+  $$("[data-voice-status]").forEach(el=>{el.textContent=status});
 
   const states=new Map(s.peerStates.map(x=>[x.uid,x.state]));
-  patchHTML(
-    "#voice-members",
-    s.members.map(m=>{
-      const mine=m.uid===currentUser?.uid;
-      const st=states.get(m.uid);
-      const detail=mine?"Toi":st==="connected"?"Audio connecté":st?"Connexion…":"Dans le vocal";
-      return `<div class="voice-member">
-        <div class="voice-avatar">${esc((m.name||"?")[0].toUpperCase())}</div>
-        <div class="voice-member-copy"><strong>${esc(m.name||"Joueur")}</strong><small>${detail}</small></div>
-        <span class="voice-mic-state ${m.muted?"muted":""}">${m.muted?"🔇":"🎙"}</span>
-      </div>`;
-    }).join("") || `<div class="voice-empty">Personne n’est encore dans le vocal.</div>`
-  );
+  const membersHtml=s.members.map(m=>{
+    const mine=m.uid===currentUser?.uid;
+    const st=states.get(m.uid);
+    const detail=mine?"Toi":st==="connected"?"Audio connecté":st?"Connexion…":"Dans le vocal";
+    return `<div class="voice-member">
+      <div class="voice-avatar">${esc((m.name||"?")[0].toUpperCase())}</div>
+      <div class="voice-member-copy"><strong>${esc(m.name||"Joueur")}</strong><small>${detail}</small></div>
+      <span class="voice-mic-state ${m.muted?"muted":""}">${m.muted?"🔇":"🎙"}</span>
+    </div>`;
+  }).join("") || `<div class="voice-empty">Personne n’est encore dans le vocal.</div>`;
+
+  $$("[data-voice-members]").forEach(el=>{
+    if(el.__html!==membersHtml){el.innerHTML=membersHtml;el.__html=membersHtml}
+  });
 }
 function renderProposal(){
   const p=currentRoomData.voteProposal;if(!p||currentRoomData.status!=="playing")return;
@@ -1916,6 +2487,131 @@ async function advanceGuessRound(){
   await startGuessRound();
 }
 
+function openGuessGroupMode(){
+  groupChallenge=null;
+  groupDuelRound=0;
+  groupDuelScores=[null,null];
+  $("#group-game-card")?.classList.add("hidden");
+  $("#group-player-card")?.classList.add("hidden");
+  $("#group-start-btn")?.classList.remove("hidden");
+  $("#group-start-btn").textContent="Commencer";
+  $("#group-feedback").textContent="";
+  show("guess-group");
+}
+
+function groupScoreValue(challenge){
+  if(!challenge)return 99;
+  return challenge.solved?challenge.attempts:challenge.maxAttempts+2;
+}
+
+function renderGroupDuelStatus(){
+  const duo=groupSettings.play==="duo";
+  $("#group-player-card")?.classList.toggle("hidden",!duo);
+  if(!duo)return;
+
+  patchText("#group-player-label",`Joueur ${groupDuelRound+1}`);
+  const s1=groupDuelScores[0]==null?"—":groupDuelScores[0];
+  const s2=groupDuelScores[1]==null?"—":groupDuelScores[1];
+  patchText("#group-duel-score",`Score : J1 ${s1} • J2 ${s2}`);
+}
+
+function renderGuessGroup(){
+  const ch=groupChallenge;
+  if(!ch)return;
+
+  $("#group-game-card")?.classList.remove("hidden");
+  $("#group-start-btn")?.classList.add("hidden");
+
+  patchHTML(
+    "#group-clues",
+    ch.clues.slice(0,ch.revealed)
+      .map((x,i)=>`<div class="guess-clue"><span>${i+1}</span><strong>${esc(x)}</strong></div>`)
+      .join("")
+  );
+
+  patchText("#group-attempts",`${ch.attempts} / ${ch.maxAttempts} essais`);
+  patchText("#group-symbol",ch.finished?"✅":"👥");
+
+  $("#group-input").disabled=ch.finished;
+  $("#group-submit-btn").disabled=ch.finished;
+  $("#group-hint-btn").disabled=ch.finished||ch.revealed>=ch.clues.length;
+
+  if(ch.finished){
+    const answer=`${ch.group.name}${ch.group.anime?" — "+ch.group.anime:""}`;
+    patchText(
+      "#group-feedback",
+      ch.solved
+        ?`✅ Trouvé en ${ch.attempts} essai${ch.attempts>1?"s":""} : ${answer}`
+        :`❌ Réponse : ${answer}`
+    );
+
+    if(groupSettings.play==="duo"){
+      groupDuelScores[groupDuelRound]=groupScoreValue(ch);
+      if(groupDuelRound===0){
+        $("#group-next-btn").textContent="Passer au Joueur 2";
+      }else{
+        const a=groupDuelScores[0],b=groupDuelScores[1];
+        const result=a===b?"Égalité !":a<b?"Joueur 1 gagne !":"Joueur 2 gagne !";
+        patchText("#group-feedback",`${$("#group-feedback").textContent} • ${result}`);
+        $("#group-next-btn").textContent="Rejouer le duel";
+      }
+      renderGroupDuelStatus();
+    }else{
+      $("#group-next-btn").textContent="Nouvelle manche";
+    }
+
+    $("#group-next-btn")?.classList.remove("hidden");
+  }else{
+    $("#group-next-btn")?.classList.add("hidden");
+  }
+}
+
+function startGroupRoundLocal(){
+  groupChallenge=newGuessGroupChallenge({difficulty:groupSettings.difficulty});
+  $("#group-input").value="";
+  $("#group-feedback").textContent="";
+  renderGroupDuelStatus();
+  renderGuessGroup();
+  $("#group-input")?.focus();
+}
+
+function submitGuessGroupLocal(){
+  if(!groupChallenge)return;
+  const result=submitGroupGuess(groupChallenge,$("#group-input").value);
+  if(result.empty)return toast("Réponse","Écris le nom du groupe ou de la catégorie.");
+  if(!result.correct&&!result.finished){
+    patchText("#group-feedback","Pas encore. Un nouvel indice vient d’être révélé.");
+    $("#group-input").value="";
+  }
+  renderGuessGroup();
+}
+
+function advanceGroupRoundLocal(){
+  if(groupSettings.play==="duo"){
+    if(groupDuelRound===0){
+      groupDuelRound=1;
+      groupChallenge=null;
+      $("#group-game-card")?.classList.add("hidden");
+      $("#group-start-btn")?.classList.remove("hidden");
+      $("#group-start-btn").textContent="Commencer le tour du Joueur 2";
+      renderGroupDuelStatus();
+      return;
+    }
+
+    groupDuelRound=0;
+    groupDuelScores=[null,null];
+    groupChallenge=null;
+    $("#group-game-card")?.classList.add("hidden");
+    $("#group-start-btn")?.classList.remove("hidden");
+    $("#group-start-btn").textContent="Recommencer le duel";
+    renderGroupDuelStatus();
+    return;
+  }
+
+  groupChallenge=null;
+  startGroupRoundLocal();
+}
+
 function armAppHistory(){
   if(historyGuardReady)return;
   historyGuardReady=true;
@@ -1959,19 +2655,25 @@ function handleAppBack(){
     return;
   }
 
-  // 3. Devine mon personnage : retour direct au menu.
-  if(currentScreen==="guess-character"){
+  // 3. Jeux locaux : retour direct au menu.
+  if(currentScreen==="guess-character" || currentScreen==="guess-group"){
     show("home");
     return;
   }
 
-  // 4. Dans une salle ou une partie : confirmation avant de quitter.
+  // 4. Session Party : retour visuel au salon, sans quitter le vocal ni la salle.
+  if(currentScreen==="party"){
+    show("lobby");
+    return;
+  }
+
+  // 5. Dans une salle ou une partie : confirmation avant de quitter.
   if(currentScreen==="game" || currentScreen==="lobby"){
     openLeaveModal();
     return;
   }
 
-  // 5. Accueil : on ne ferme pas brutalement Chrome/PWA.
+  // 6. Accueil : on ne ferme pas brutalement Chrome/PWA.
   toast("Accueil","Tu es déjà dans le menu principal.");
 }
 
@@ -2059,8 +2761,9 @@ $("#solo-room-btn").addEventListener("click",()=>createRoom({solo:true}).catch(e
 $("#join-room-btn").addEventListener("click",()=>joinRoom().catch(e=>toast("Connexion impossible",e.message)));
 $("#copy-code-btn").addEventListener("click",async()=>{await navigator.clipboard.writeText(currentRoom);toast("Code copié",currentRoom)});
 $("#share-room-btn").addEventListener("click",async()=>{const t=`Rejoins ma salle Anime Imposteur : ${currentRoom}`;if(navigator.share)await navigator.share({title:"Anime Imposteur",text:t,url:location.href});else await navigator.clipboard.writeText(t+" "+location.href)});
-$("#start-game-btn").addEventListener("click",()=>startGame().catch(e=>toast("Erreur",e.message)));
+$("#start-game-btn").addEventListener("click",()=>startSelectedRoomMode().catch(e=>toast("Erreur",e.message)));
 $("#next-game-btn").addEventListener("click",()=>startGame().catch(e=>toast("Erreur",e.message)));
+$("#change-game-after-impostor-btn")?.addEventListener("click",()=>returnPartyToLobby().catch(e=>toast("Salon",e.message)));
 $("#send-hint-btn").addEventListener("click",()=>sendHint().catch(e=>toast("Erreur",e.message)));
 $("#hint-input").addEventListener("keydown",e=>{if(e.key==="Enter")$("#send-hint-btn").click()});
 $("#send-chat-btn").addEventListener("click",()=>{const t=$("#chat-input").value;$("#chat-input").value="";sendMessage(t).catch(e=>toast("Erreur",e.message))});
@@ -2068,27 +2771,24 @@ $$("[data-discussion-mode]").forEach(b=>b.addEventListener("click",()=>{
   discussionMode=b.dataset.discussionMode;
   renderVoicePanel();
 }));
-$("#voice-join-btn")?.addEventListener("click",async()=>{
-  try{
-    const me=participantById(currentUser?.uid);
-    const authToken=await currentUser.getIdToken();
-    await voiceEngine.join({
-      roomId:currentRoom,
-      uid:currentUser.uid,
-      name:me?.name||safeName($("#home-name").value),
-      authToken,
-      gameNo:currentRoomData?.gameNo||0,
-      knownPlayers:players
-    });
-    voiceEngine.updateMembers(players);
-    toast("Vocal","Micro connecté.");
-  }catch(e){
-    const denied=e?.name==="NotAllowedError"||String(e?.message||"").toLowerCase().includes("permission");
-    toast("Vocal impossible",denied?"Autorise le microphone dans l’application.":e.message);
+document.addEventListener("click",e=>{
+  if(e.target.closest("[data-voice-join]")){
+    joinCurrentVoice()
+      .then(()=>toast("Vocal","Micro connecté."))
+      .catch(err=>{
+        const denied=err?.name==="NotAllowedError"||String(err?.message||"").toLowerCase().includes("permission");
+        toast("Vocal impossible",denied?"Autorise le microphone dans l’application.":err.message);
+      });
+    return;
+  }
+  if(e.target.closest("[data-voice-mute]")){
+    voiceEngine?.toggleMute().catch(err=>toast("Vocal",err.message));
+    return;
+  }
+  if(e.target.closest("[data-voice-leave]")){
+    voiceEngine?.leave().catch(()=>{});
   }
 });
-$("#voice-mute-btn")?.addEventListener("click",()=>voiceEngine?.toggleMute().catch(e=>toast("Vocal",e.message)));
-$("#voice-leave-btn")?.addEventListener("click",()=>voiceEngine?.leave().catch(()=>{}));
 $("#chat-input").addEventListener("keydown",e=>{if(e.key==="Enter")$("#send-chat-btn").click()});
 $("#propose-vote-btn").addEventListener("click",()=>proposeVote().catch(e=>toast("Erreur",e.message)));
 $("#submit-vote-btn").addEventListener("click",async()=>{const id=$("#vote-choices").dataset.selectedId;if(!id)return toast("Choisis un joueur");await writeMyVote(id);scheduleRender()});
@@ -2111,29 +2811,104 @@ $("#guess-hint-btn")?.addEventListener("click",()=>{
 });
 $("#guess-next-btn")?.addEventListener("click",()=>advanceGuessRound());
 $("#guess-input")?.addEventListener("keydown",e=>{if(e.key==="Enter")submitGuessCharacter()});
-$("[data-guess-play]").forEach(b=>b.addEventListener("click",()=>{
+
+$("#party-chat-send-btn")?.addEventListener("click",()=>{
+  const input=$("#party-chat-input");
+  const t=input?.value||"";
+  if(input)input.value="";
+  sendMessage(t).catch(e=>toast("Chat",e.message));
+});
+$("#party-chat-input")?.addEventListener("keydown",e=>{if(e.key==="Enter")$("#party-chat-send-btn")?.click()});
+
+$("#open-group-mode-btn")?.addEventListener("click",openGuessGroupMode);
+$("#group-back-btn")?.addEventListener("click",()=>show("home"));
+$("#group-start-btn")?.addEventListener("click",startGroupRoundLocal);
+$("#group-submit-btn")?.addEventListener("click",submitGuessGroupLocal);
+$("#group-hint-btn")?.addEventListener("click",()=>{
+  if(!groupChallenge)return;
+  revealGroupHint(groupChallenge);
+  renderGuessGroup();
+});
+$("#group-next-btn")?.addEventListener("click",advanceGroupRoundLocal);
+$("#group-input")?.addEventListener("keydown",e=>{if(e.key==="Enter")submitGuessGroupLocal()});
+
+$$("[data-group-play]").forEach(b=>b.addEventListener("click",()=>{
+  groupSettings.play=b.dataset.groupPlay;
+  $$("[data-group-play]").forEach(x=>x.classList.toggle("active",x===b));
+  groupChallenge=null;groupDuelRound=0;groupDuelScores=[null,null];
+  $("#group-game-card")?.classList.add("hidden");
+  $("#group-start-btn")?.classList.remove("hidden");
+  renderGroupDuelStatus();
+}));
+
+$$("[data-group-difficulty]").forEach(b=>b.addEventListener("click",()=>{
+  groupSettings.difficulty=b.dataset.groupDifficulty;
+  $$("[data-group-difficulty]").forEach(x=>x.classList.toggle("active",x===b));
+}));
+
+$("#party-back-btn")?.addEventListener("click",()=>{
+  if(isHost)returnPartyToLobby().catch(e=>toast("Salon",e.message));
+  else toast("Partie en cours","L’hôte choisit quand revenir au salon.");
+});
+$("#party-change-game-btn")?.addEventListener("click",()=>returnPartyToLobby().catch(e=>toast("Salon",e.message)));
+$("#party-next-speaker-btn")?.addEventListener("click",()=>nextPartySpeaker().catch(e=>toast("VS",e.message)));
+$("#party-open-vote-btn")?.addEventListener("click",()=>openPartyVote().catch(e=>toast("VS",e.message)));
+$("#party-finish-vote-btn")?.addEventListener("click",()=>finishPartyVote().catch(e=>toast("VS",e.message)));
+$("#party-toggle-group-btn")?.addEventListener("click",()=>{
+  const box=$("#party-my-group");
+  if(!box)return;
+  const visible=box.dataset.visible==="1";
+  box.dataset.visible=visible?"0":"1";
+  $("#party-toggle-group-btn").textContent=visible?"Voir mon secret":"Cacher mon secret";
+  renderPartySession();
+});
+$("#party-reveal-groups-btn")?.addEventListener("click",()=>revealPartyGroups().catch(e=>toast("Groupes",e.message)));
+$("#party-new-group-round-btn")?.addEventListener("click",()=>{
+  const mode=currentRoomData?.partySession?.mode;
+  const action=mode==="guess-character"?startCharacterParty:startGroupParty;
+  action().catch(e=>toast("Nouvelle manche",e.message));
+});
+
+$$("[data-guess-play]").forEach(b=>b.addEventListener("click",()=>{
   guessSettings.play=b.dataset.guessPlay;
-  $("[data-guess-play]").forEach(x=>x.classList.toggle("active",x===b));
+  $$("[data-guess-play]").forEach(x=>x.classList.toggle("active",x===b));
   guessChallenge=null;guessDuelRound=0;guessDuelScores=[null,null];
   $("#guess-game-card")?.classList.add("hidden");
   $("#guess-start-btn")?.classList.remove("hidden");
   renderGuessDuelStatus();
 }));
-$("[data-guess-difficulty]").forEach(b=>b.addEventListener("click",()=>{
+$$("[data-guess-difficulty]").forEach(b=>b.addEventListener("click",()=>{
   guessSettings.difficulty=b.dataset.guessDifficulty;
-  $("[data-guess-difficulty]").forEach(x=>x.classList.toggle("active",x===b));
+  $$("[data-guess-difficulty]").forEach(x=>x.classList.toggle("active",x===b));
 }));
 
 $("#join-code").addEventListener("input",e=>e.target.value=e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,""));
-$$$("[data-game-tab]").forEach(b=>b.addEventListener("click",()=>setGameTab(b.dataset.gameTab)));
+$$("[data-game-tab]").forEach(b=>b.addEventListener("click",()=>setGameTab(b.dataset.gameTab)));
 document.addEventListener("click",e=>{
+  const roomMode=e.target.closest("[data-room-mode]")?.dataset.roomMode;
+  if(roomMode){
+    setRoomMode(roomMode).catch(err=>toast("Salon",err.message));
+    return;
+  }
+
+  const partyVote=e.target.closest("[data-party-vote]")?.dataset.partyVote;
+  if(partyVote){
+    castPartyVote(partyVote).catch(err=>toast("Vote",err.message));
+    return;
+  }
+
+  if(e.target.closest("[data-new-vs-round]")){
+    startVsParty().catch(err=>toast("VS",err.message));
+    return;
+  }
+
   const add=e.target.closest("[data-add-bot]");if(add)addBot(add.dataset.addBot,add.dataset.diff).then(()=>$("#bot-modal").classList.add("hidden"));
   const rem=e.target.closest("[data-remove-bot]");if(rem)removeBot(rem.dataset.removeBot);
   const mode=e.target.closest("[data-mode]")?.dataset.mode;if(mode){localSettings.mode=mode;$$("[data-mode]").forEach(x=>x.classList.toggle("active",x.dataset.mode===mode));$("#manual-anime-panel").classList.toggle("hidden",mode!=="manual");refreshAiStatus()}
-  const diff=e.target.closest("[data-difficulty]")?.dataset.difficulty;if(diff){localSettings.difficulty=diff;$("[data-difficulty]").forEach(x=>x.classList.toggle("active",x.dataset.difficulty===diff));refreshAiStatus()}
+  const diff=e.target.closest("[data-difficulty]")?.dataset.difficulty;if(diff){localSettings.difficulty=diff;$$("[data-difficulty]").forEach(x=>x.classList.toggle("active",x.dataset.difficulty===diff));refreshAiStatus()}
   const variant=e.target.closest("[data-pair-variant]")?.dataset.pairVariant;if(variant){
     localSettings.pairVariant=variant;
-    $("[data-pair-variant]").forEach(x=>x.classList.toggle("active",x.dataset.pairVariant===variant));
+    $$("[data-pair-variant]").forEach(x=>x.classList.toggle("active",x.dataset.pairVariant===variant));
     $("#mix-anime").disabled=variant==="universe";
     refreshAiStatus();
   }
@@ -2153,12 +2928,12 @@ if("serviceWorker" in navigator){
       const keys=await caches.keys();
       await Promise.all(
         keys
-          .filter(k=>k.startsWith("anime-imposteur-") && k!=="anime-imposteur-v9-0-0")
+          .filter(k=>k.startsWith("anime-imposteur-") && k!=="anime-imposteur-v10-0-0")
           .map(k=>caches.delete(k))
       );
 
       const reg=await navigator.serviceWorker.register(
-        "./service-worker.js?v=9.0.0",
+        "./service-worker.js?v=10.0.0",
         {updateViaCache:"none"}
       );
       await reg.update().catch(()=>{});
