@@ -263,6 +263,7 @@
           </div>
           <div class="party-mode-grid">
             <button class="party-mode-option active" data-room-mode="impostor" type="button">🎭<strong>Imposteur</strong></button>
+            <button class="party-mode-option" data-room-mode="guess-character" type="button">🕵️<strong>Devine personnage</strong></button>
             <button class="party-mode-option" data-room-mode="guess-group" type="button">👥<strong>Devine groupe</strong></button>
             <button class="party-mode-option" data-room-mode="vs" type="button">⚔️<strong>VS vocal</strong></button>
           </div>
@@ -422,17 +423,18 @@
       </div>
 
       <div id="party-group-panel" class="card hidden">
-        <span class="eyebrow">DEVINE MON GROUPE</span>
-        <h2>Chacun reçoit un groupe secret.</h2>
+        <span id="party-secret-kicker" class="eyebrow">DEVINE MON GROUPE</span>
+        <h2 id="party-secret-title">Chacun reçoit un groupe secret.</h2>
         <div id="party-my-group" class="secret-group-box">
-          <small>TON GROUPE</small>
+          <img id="party-secret-image" class="party-secret-image hidden" alt="">
+          <small id="party-secret-label">TON GROUPE</small>
           <strong>••••••</strong>
           <p></p>
         </div>
-        <button id="party-toggle-group-btn" class="btn secondary" type="button">Voir mon groupe</button>
+        <button id="party-toggle-group-btn" class="btn secondary" type="button">Voir mon secret</button>
         <div class="turn-banner">
           <div class="turn-avatar">🎙</div>
-          <div class="turn-copy"><span class="turn-kicker">DISCUSSION VOCALE</span><strong>Faites deviner votre groupe</strong><small>Exemples : Akatsuki, cheveux longs, épéistes, mentors…</small></div>
+          <div class="turn-copy"><span class="turn-kicker">DISCUSSION VOCALE</span><strong id="party-secret-instruction">Faites deviner votre groupe</strong><small id="party-secret-help">Exemples : Akatsuki, cheveux longs, épéistes, mentors…</small></div>
         </div>
         <div id="party-group-host-actions" class="two-actions">
           <button id="party-reveal-groups-btn" class="btn secondary" type="button">Révéler les groupes</button>
@@ -639,6 +641,7 @@
           <h3>👑 Hôte</h3>
           <p>Quand tout le monde a fini de discuter, relance une nouvelle partie sans quitter la salle.</p>
           <button id="next-game-btn" class="btn primary">🔄 Nouvelle partie — même salle</button>
+          <button id="change-game-after-impostor-btn" class="btn secondary">🎮 Changer de jeu — garder la salle</button>
         </div>
       </section>
     </section>
