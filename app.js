@@ -1,17 +1,24 @@
 import { firebaseConfig } from "./firebase-config.js";
-import { VoiceEngine } from "./voice-engine.js?v=9.0.0";
-import { animeDB, chooseIntelligentPair } from "./ai-engine.js?v=9.0.0";
-import { chooseOnlineIntelligentPair, warmOnlineCharacterPool, getOnlineEngineInfo } from "./online-character-engine.js?v=9.0.0";
-import { chooseUniverseConceptPair, conceptEngineStats } from "./concept-engine.js?v=9.0.0";
+import { VoiceEngine } from "./voice-engine.js?v=10.0.0";
+import { animeDB, chooseIntelligentPair } from "./ai-engine.js?v=10.0.0";
+import { chooseOnlineIntelligentPair, warmOnlineCharacterPool, getOnlineEngineInfo } from "./online-character-engine.js?v=10.0.0";
+import { chooseUniverseConceptPair, conceptEngineStats } from "./concept-engine.js?v=10.0.0";
 import {
   newGuessCharacterChallenge,
   submitCharacterGuess,
   revealGuessHint
-} from "./guess-character-engine.js?v=9.0.0";
+} from "./guess-character-engine.js?v=10.0.0";
+import {
+  newGuessGroupChallenge,
+  submitGroupGuess,
+  revealGroupHint,
+  allGuessGroups
+} from "./group-engine.js?v=10.0.0";
+import { newVsPrompt, vsStats } from "./vs-engine.js?v=10.0.0";
 import {
   chooseAdaptiveBotHint, chooseBotVote, botVoteApproval,
   buildBotDiscussion, shouldBotReply, botReplyDelay, resetBotMemory
-} from "./bot-engine.js?v=9.0.0";
+} from "./bot-engine.js?v=10.0.0";
 
 const $=s=>document.querySelector(s);
 const $$=s=>[...document.querySelectorAll(s)];
@@ -60,6 +67,15 @@ const guessSettings={play:"solo",difficulty:"normal"};
 let guessChallenge=null;
 let guessDuelRound=0;
 let guessDuelScores=[null,null];
+
+const groupSettings={play:"solo",difficulty:"normal"};
+let groupChallenge=null;
+let groupDuelRound=0;
+let groupDuelScores=[null,null];
+
+let partyAssignment=null;
+let partyVotes=[];
+let firebaseInitPromise=null;
 
 const esc=s=>String(s??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]));
 const norm=s=>String(s||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"");
@@ -2111,29 +2127,29 @@ $("#guess-hint-btn")?.addEventListener("click",()=>{
 });
 $("#guess-next-btn")?.addEventListener("click",()=>advanceGuessRound());
 $("#guess-input")?.addEventListener("keydown",e=>{if(e.key==="Enter")submitGuessCharacter()});
-$("[data-guess-play]").forEach(b=>b.addEventListener("click",()=>{
+$$("[data-guess-play]").forEach(b=>b.addEventListener("click",()=>{
   guessSettings.play=b.dataset.guessPlay;
-  $("[data-guess-play]").forEach(x=>x.classList.toggle("active",x===b));
+  $$("[data-guess-play]").forEach(x=>x.classList.toggle("active",x===b));
   guessChallenge=null;guessDuelRound=0;guessDuelScores=[null,null];
   $("#guess-game-card")?.classList.add("hidden");
   $("#guess-start-btn")?.classList.remove("hidden");
   renderGuessDuelStatus();
 }));
-$("[data-guess-difficulty]").forEach(b=>b.addEventListener("click",()=>{
+$$("[data-guess-difficulty]").forEach(b=>b.addEventListener("click",()=>{
   guessSettings.difficulty=b.dataset.guessDifficulty;
-  $("[data-guess-difficulty]").forEach(x=>x.classList.toggle("active",x===b));
+  $$("[data-guess-difficulty]").forEach(x=>x.classList.toggle("active",x===b));
 }));
 
 $("#join-code").addEventListener("input",e=>e.target.value=e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,""));
-$$$("[data-game-tab]").forEach(b=>b.addEventListener("click",()=>setGameTab(b.dataset.gameTab)));
+$$("[data-game-tab]").forEach(b=>b.addEventListener("click",()=>setGameTab(b.dataset.gameTab)));
 document.addEventListener("click",e=>{
   const add=e.target.closest("[data-add-bot]");if(add)addBot(add.dataset.addBot,add.dataset.diff).then(()=>$("#bot-modal").classList.add("hidden"));
   const rem=e.target.closest("[data-remove-bot]");if(rem)removeBot(rem.dataset.removeBot);
   const mode=e.target.closest("[data-mode]")?.dataset.mode;if(mode){localSettings.mode=mode;$$("[data-mode]").forEach(x=>x.classList.toggle("active",x.dataset.mode===mode));$("#manual-anime-panel").classList.toggle("hidden",mode!=="manual");refreshAiStatus()}
-  const diff=e.target.closest("[data-difficulty]")?.dataset.difficulty;if(diff){localSettings.difficulty=diff;$("[data-difficulty]").forEach(x=>x.classList.toggle("active",x.dataset.difficulty===diff));refreshAiStatus()}
+  const diff=e.target.closest("[data-difficulty]")?.dataset.difficulty;if(diff){localSettings.difficulty=diff;$$("[data-difficulty]").forEach(x=>x.classList.toggle("active",x.dataset.difficulty===diff));refreshAiStatus()}
   const variant=e.target.closest("[data-pair-variant]")?.dataset.pairVariant;if(variant){
     localSettings.pairVariant=variant;
-    $("[data-pair-variant]").forEach(x=>x.classList.toggle("active",x.dataset.pairVariant===variant));
+    $$("[data-pair-variant]").forEach(x=>x.classList.toggle("active",x.dataset.pairVariant===variant));
     $("#mix-anime").disabled=variant==="universe";
     refreshAiStatus();
   }
@@ -2153,12 +2169,12 @@ if("serviceWorker" in navigator){
       const keys=await caches.keys();
       await Promise.all(
         keys
-          .filter(k=>k.startsWith("anime-imposteur-") && k!=="anime-imposteur-v9-0-0")
+          .filter(k=>k.startsWith("anime-imposteur-") && k!=="anime-imposteur-v10-0-0")
           .map(k=>caches.delete(k))
       );
 
       const reg=await navigator.serviceWorker.register(
-        "./service-worker.js?v=9.0.0",
+        "./service-worker.js?v=10.0.0",
         {updateViaCache:"none"}
       );
       await reg.update().catch(()=>{});
