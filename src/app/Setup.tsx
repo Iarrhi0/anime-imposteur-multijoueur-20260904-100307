@@ -35,7 +35,7 @@ export function Setup({ mode, gameId, preset, campaignLevel, daily }: { mode: Mo
           { id: uid('h_'), name: 'Joueur 2', avatar: HUMAN_AVATARS[1] },
           { id: uid('h_'), name: 'Joueur 3', avatar: HUMAN_AVATARS[2] }
         ]
-      : [{ id: uid('h_'), name: me.name || 'Moi', avatar: me.avatar }]
+      : [{ id: uid('h_'), name: me.name.trim() || 'Joueur', avatar: me.avatar }]
   );
   const [slots, setSlots] = useState<AISlot[]>(() => {
     if (level) return level.ais.map((personality) => ({ ...newAISlot(), personality }));
