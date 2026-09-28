@@ -12,7 +12,7 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icons/icon-192.png">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
-  <link rel="stylesheet" href="style.css?v=10.0.1">
+  <link rel="stylesheet" href="style.css?v=10.0.2">
 </head>
 <body>
   <div id="toast-layer" class="toast-layer"></div>
@@ -24,7 +24,7 @@
         <h1>Anime Imposteur</h1>
         <p>Imposteur • Devine le personnage • IA • multijoueur</p>
       </div>
-      <div class="brand-build">v10.0.1</div><div id="connection-dot" class="connection-dot"></div>
+      <div class="brand-build">v10.0.2</div><div id="connection-dot" class="connection-dot"></div>
     </header>
 
     <div id="fatal-config" class="fatal hidden"></div>
@@ -77,6 +77,96 @@
 
     </section>
 
+
+
+    <!-- LOCAL SOLO VS 4 IA -->
+    <section id="screen-solo-ai" class="screen solo-ai-screen">
+      <div class="room-head card">
+        <button id="solo-ai-back-btn" class="app-back-btn lobby-back-btn" aria-label="Retour">‹</button>
+        <span class="eyebrow">MODE LOCAL</span>
+        <h2 class="solo-ai-title">🤖 Anime Imposteur contre 4 IA</h2>
+        <p class="solo-ai-sub">Aucune salle Firebase nécessaire. La partie tourne directement sur ton téléphone.</p>
+      </div>
+
+      <div id="solo-ai-loading" class="card waiting hidden">
+        <div class="loader"></div>
+        <h3>Préparation de la partie…</h3>
+        <p class="player-sub">Recherche d’un duo varié puis initialisation des IA.</p>
+      </div>
+
+      <div id="solo-ai-game" class="hidden">
+        <div class="card character-mini solo-secret-card">
+          <div>
+            <span class="eyebrow">TON SECRET</span>
+            <strong id="solo-ai-character-name">••••••</strong>
+            <small id="solo-ai-character-anime">Secret</small>
+          </div>
+          <button id="solo-ai-toggle-secret" class="mini-btn" data-visible="0" type="button">Voir</button>
+        </div>
+
+        <div id="solo-ai-photo-wrap" class="card solo-ai-photo-wrap hidden">
+          <img id="solo-ai-photo" alt="">
+        </div>
+
+        <div class="card">
+          <div class="section-title">
+            <div>
+              <h3>Participants</h3>
+              <p>Toi + 4 IA locales</p>
+            </div>
+            <span id="solo-ai-round-pill" class="pill">Manche 1</span>
+          </div>
+          <div id="solo-ai-players" class="players-horizontal"></div>
+        </div>
+
+        <div id="solo-ai-hints-card" class="card">
+          <div class="section-title">
+            <div>
+              <h3>🧩 Indices</h3>
+              <p>Un seul mot par manche</p>
+            </div>
+          </div>
+          <div id="solo-ai-hints" class="hints-list"></div>
+          <div id="solo-ai-hint-compose" class="composer">
+            <input id="solo-ai-hint-input" maxlength="24" autocomplete="off" placeholder="Ton indice…">
+            <button id="solo-ai-send-hint" class="send-btn" type="button">➤</button>
+          </div>
+        </div>
+
+        <div id="solo-ai-discussion-card" class="card">
+          <div class="section-title">
+            <div>
+              <h3>💬 Discussion avec les IA</h3>
+              <p>Questionne-les avant de voter.</p>
+            </div>
+          </div>
+          <div id="solo-ai-chat" class="solo-ai-chat"></div>
+          <div class="composer">
+            <input id="solo-ai-chat-input" maxlength="240" autocomplete="off" placeholder="Ex. Qui suspectes-tu ?">
+            <button id="solo-ai-send-chat" class="send-btn" type="button">➤</button>
+          </div>
+          <div id="solo-ai-round-actions" class="two-actions hidden">
+            <button id="solo-ai-next-round" class="btn secondary" type="button">Nouvelle manche</button>
+            <button id="solo-ai-open-vote" class="btn primary" type="button">Passer au vote</button>
+          </div>
+        </div>
+
+        <div id="solo-ai-vote-card" class="card hidden">
+          <div class="section-title">
+            <div><h3>🗳️ Ton vote</h3><p>Qui est l’imposteur ?</p></div>
+          </div>
+          <div id="solo-ai-vote-choices" class="vote-grid"></div>
+        </div>
+
+        <div id="solo-ai-result-card" class="card result-card hidden">
+          <div id="solo-ai-result-emoji" class="result-emoji">🏆</div>
+          <h2 id="solo-ai-result-title">Résultat</h2>
+          <div id="solo-ai-result-text"></div>
+          <div id="solo-ai-reveal" class="solo-ai-reveal"></div>
+          <button id="solo-ai-new-game" class="btn primary" type="button">🔄 Nouvelle partie contre 4 IA</button>
+        </div>
+      </div>
+    </section>
 
     <!-- GUESS CHARACTER -->
     <section id="screen-guess-character" class="screen">
@@ -696,6 +786,6 @@
     </div>
   </main>
 
-  <script type="module" src="app.js?v=10.0.1"></script>
+  <script type="module" src="app.js?v=10.0.2"></script>
 </body>
 </html>
