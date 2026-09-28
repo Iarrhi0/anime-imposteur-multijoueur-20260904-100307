@@ -339,6 +339,98 @@ function bandForDifficulty(difficulty){
   return {min:55,max:75,target:65,minCommon:3,minCovered:2};
 }
 
+const CLUE_ALIAS={
+  "cheveux clairs":"Clair",
+  "cheveux noirs":"Noir",
+  "cheveux rouges":"Rouge",
+  "cheveux longs":"Long",
+  "cheveux hérissés":"Hérissé",
+  "lunettes":"Lunettes",
+  "œil ou regard particulier":"Yeux",
+  "cicatrices":"Cicatrice",
+  "apparence imposante":"Imposant",
+  "apparence jeune":"Jeune",
+  "calme":"Calme",
+  "réservé":"Réservé",
+  "énergique":"Énergique",
+  "optimiste":"Optimiste",
+  "sarcastique":"Sarcastique",
+  "très intelligent":"Génie",
+  "calculateur":"Calculateur",
+  "protecteur":"Protecteur",
+  "loyal":"Loyal",
+  "arrogant":"Arrogant",
+  "froid":"Froid",
+  "gentil":"Gentil",
+  "déterminé":"Déterminé",
+  "mystérieux":"Mystère",
+  "excentrique":"Excentrique",
+  "mentor":"Mentor",
+  "professeur":"Professeur",
+  "chef":"Chef",
+  "héros principal":"Héros",
+  "antagoniste":"Antagoniste",
+  "rival":"Rival",
+  "prodige":"Prodige",
+  "assassin":"Assassin",
+  "épéiste":"Épéiste",
+  "soldat":"Soldat",
+  "détective":"Détective",
+  "scientifique":"Scientifique",
+  "roi ou souverain":"Roi",
+  "étudiant":"Étudiant",
+  "pirate":"Pirate",
+  "ninja":"Ninja",
+  "sorcier ou mage":"Mage",
+  "épée":"Sabre",
+  "combat rapproché":"Mêlée",
+  "grande vitesse":"Rapide",
+  "force physique":"Force",
+  "feu":"Feu",
+  "glace":"Glace",
+  "foudre":"Foudre",
+  "pouvoir psychique":"Psychique",
+  "illusion":"Illusion",
+  "transformation":"Transformation",
+  "invocation":"Invocation",
+  "guérison":"Soin",
+  "combat tactique":"Tactique",
+  "armes à distance":"Distance",
+  "passé tragique":"Tragédie",
+  "vengeance":"Vengeance",
+  "perte de proches":"Perte",
+  "famille difficile":"Famille",
+  "orphelin ou enfance solitaire":"Solitude",
+  "identité secrète":"Secret",
+  "sacrifice":"Sacrifice",
+  "responsabilité lourde":"Devoir",
+  "quête ou grand objectif":"Objectif",
+  "charismatique":"Charisme",
+  "intimidant":"Intimidant",
+  "légendaire":"Légendaire",
+  "présence de leader":"Leader",
+  "imprévisible":"Imprévisible",
+  "personnage principal":"Héros",
+  "personnage secondaire important":"Allié",
+  "enfant":"Enfant",
+  "adolescent":"Jeune",
+  "jeune adulte":"Adulte",
+  "adulte":"Adulte",
+  "adulte mûr":"Vétéran"
+};
+
+function clueKeywords(profile){
+  const preferred=["combat","role","appearance","personality","story","aura"];
+  const out=[];
+  for(const cat of preferred){
+    for(const trait of profile?.traits?.[cat]||[]){
+      const word=CLUE_ALIAS[trait]||trait;
+      if(word&&!out.some(x=>norm(x)===norm(word)))out.push(word);
+    }
+  }
+  return out.slice(0,14);
+}
+
 function pairKey(a,b){
   return [a,b].sort((x,y)=>x.localeCompare(y)).join("|||");
 }
@@ -452,6 +544,7 @@ export async function chooseOnlineIntelligentPair({
           anime:a.anime,
           name:a.name,
           imageUrl:a.imageUrl,
+          keywords:clueKeywords(a),
           source:"anilist"
         },
         b:{
@@ -459,6 +552,7 @@ export async function chooseOnlineIntelligentPair({
           anime:b.anime,
           name:b.name,
           imageUrl:b.imageUrl,
+          keywords:clueKeywords(b),
           source:"anilist"
         },
         score:e.score,
