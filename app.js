@@ -2541,19 +2541,25 @@ function handleAppBack(){
     return;
   }
 
-  // 3. Devine mon personnage : retour direct au menu.
-  if(currentScreen==="guess-character"){
+  // 3. Jeux locaux : retour direct au menu.
+  if(currentScreen==="guess-character" || currentScreen==="guess-group"){
     show("home");
     return;
   }
 
-  // 4. Dans une salle ou une partie : confirmation avant de quitter.
+  // 4. Session Party : retour visuel au salon, sans quitter le vocal ni la salle.
+  if(currentScreen==="party"){
+    show("lobby");
+    return;
+  }
+
+  // 5. Dans une salle ou une partie : confirmation avant de quitter.
   if(currentScreen==="game" || currentScreen==="lobby"){
     openLeaveModal();
     return;
   }
 
-  // 5. Accueil : on ne ferme pas brutalement Chrome/PWA.
+  // 6. Accueil : on ne ferme pas brutalement Chrome/PWA.
   toast("Accueil","Tu es déjà dans le menu principal.");
 }
 
@@ -2641,7 +2647,7 @@ $("#solo-room-btn").addEventListener("click",()=>createRoom({solo:true}).catch(e
 $("#join-room-btn").addEventListener("click",()=>joinRoom().catch(e=>toast("Connexion impossible",e.message)));
 $("#copy-code-btn").addEventListener("click",async()=>{await navigator.clipboard.writeText(currentRoom);toast("Code copié",currentRoom)});
 $("#share-room-btn").addEventListener("click",async()=>{const t=`Rejoins ma salle Anime Imposteur : ${currentRoom}`;if(navigator.share)await navigator.share({title:"Anime Imposteur",text:t,url:location.href});else await navigator.clipboard.writeText(t+" "+location.href)});
-$("#start-game-btn").addEventListener("click",()=>startGame().catch(e=>toast("Erreur",e.message)));
+$("#start-game-btn").addEventListener("click",()=>startSelectedRoomMode().catch(e=>toast("Erreur",e.message)));
 $("#next-game-btn").addEventListener("click",()=>startGame().catch(e=>toast("Erreur",e.message)));
 $("#send-hint-btn").addEventListener("click",()=>sendHint().catch(e=>toast("Erreur",e.message)));
 $("#hint-input").addEventListener("keydown",e=>{if(e.key==="Enter")$("#send-hint-btn").click()});
@@ -2650,27 +2656,24 @@ $$("[data-discussion-mode]").forEach(b=>b.addEventListener("click",()=>{
   discussionMode=b.dataset.discussionMode;
   renderVoicePanel();
 }));
-$("#voice-join-btn")?.addEventListener("click",async()=>{
-  try{
-    const me=participantById(currentUser?.uid);
-    const authToken=await currentUser.getIdToken();
-    await voiceEngine.join({
-      roomId:currentRoom,
-      uid:currentUser.uid,
-      name:me?.name||safeName($("#home-name").value),
-      authToken,
-      gameNo:currentRoomData?.gameNo||0,
-      knownPlayers:players
-    });
-    voiceEngine.updateMembers(players);
-    toast("Vocal","Micro connecté.");
-  }catch(e){
-    const denied=e?.name==="NotAllowedError"||String(e?.message||"").toLowerCase().includes("permission");
-    toast("Vocal impossible",denied?"Autorise le microphone dans l’application.":e.message);
+document.addEventListener("click",e=>{
+  if(e.target.closest("[data-voice-join]")){
+    joinCurrentVoice()
+      .then(()=>toast("Vocal","Micro connecté."))
+      .catch(err=>{
+        const denied=err?.name==="NotAllowedError"||String(err?.message||"").toLowerCase().includes("permission");
+        toast("Vocal impossible",denied?"Autorise le microphone dans l’application.":err.message);
+      });
+    return;
+  }
+  if(e.target.closest("[data-voice-mute]")){
+    voiceEngine?.toggleMute().catch(err=>toast("Vocal",err.message));
+    return;
+  }
+  if(e.target.closest("[data-voice-leave]")){
+    voiceEngine?.leave().catch(()=>{});
   }
 });
-$("#voice-mute-btn")?.addEventListener("click",()=>voiceEngine?.toggleMute().catch(e=>toast("Vocal",e.message)));
-$("#voice-leave-btn")?.addEventListener("click",()=>voiceEngine?.leave().catch(()=>{}));
 $("#chat-input").addEventListener("keydown",e=>{if(e.key==="Enter")$("#send-chat-btn").click()});
 $("#propose-vote-btn").addEventListener("click",()=>proposeVote().catch(e=>toast("Erreur",e.message)));
 $("#submit-vote-btn").addEventListener("click",async()=>{const id=$("#vote-choices").dataset.selectedId;if(!id)return toast("Choisis un joueur");await writeMyVote(id);scheduleRender()});
@@ -2693,7 +2696,50 @@ $("#guess-hint-btn")?.addEventListener("click",()=>{
 });
 $("#guess-next-btn")?.addEventListener("click",()=>advanceGuessRound());
 $("#guess-input")?.addEventListener("keydown",e=>{if(e.key==="Enter")submitGuessCharacter()});
-$$("[data-guess-play]").forEach(b=>b.addEventListener("click",()=>{
+
+$("#open-group-mode-btn")?.addEventListener("click",openGuessGroupMode);
+$("#group-back-btn")?.addEventListener("click",()=>show("home"));
+$("#group-start-btn")?.addEventListener("click",startGroupRoundLocal);
+$("#group-submit-btn")?.addEventListener("click",submitGuessGroupLocal);
+$("#group-hint-btn")?.addEventListener("click",()=>{
+  if(!groupChallenge)return;
+  revealGroupHint(groupChallenge);
+  renderGuessGroup();
+});
+$("#group-next-btn")?.addEventListener("click",advanceGroupRoundLocal);
+$("#group-input")?.addEventListener("keydown",e=>{if(e.key==="Enter")submitGuessGroupLocal()});
+
+$("[data-group-play]").forEach(b=>b.addEventListener("click",()=>{
+  groupSettings.play=b.dataset.groupPlay;
+  $("[data-group-play]").forEach(x=>x.classList.toggle("active",x===b));
+  groupChallenge=null;groupDuelRound=0;groupDuelScores=[null,null];
+  $("#group-game-card")?.classList.add("hidden");
+  $("#group-start-btn")?.classList.remove("hidden");
+  renderGroupDuelStatus();
+}));
+
+$("[data-group-difficulty]").forEach(b=>b.addEventListener("click",()=>{
+  groupSettings.difficulty=b.dataset.groupDifficulty;
+  $("[data-group-difficulty]").forEach(x=>x.classList.toggle("active",x===b));
+}));
+
+$("#party-back-btn")?.addEventListener("click",()=>show("lobby"));
+$("#party-change-game-btn")?.addEventListener("click",()=>returnPartyToLobby().catch(e=>toast("Salon",e.message)));
+$("#party-next-speaker-btn")?.addEventListener("click",()=>nextPartySpeaker().catch(e=>toast("VS",e.message)));
+$("#party-open-vote-btn")?.addEventListener("click",()=>openPartyVote().catch(e=>toast("VS",e.message)));
+$("#party-finish-vote-btn")?.addEventListener("click",()=>finishPartyVote().catch(e=>toast("VS",e.message)));
+$("#party-toggle-group-btn")?.addEventListener("click",()=>{
+  const box=$("#party-my-group");
+  if(!box)return;
+  const visible=box.dataset.visible==="1";
+  box.dataset.visible=visible?"0":"1";
+  $("#party-toggle-group-btn").textContent=visible?"Voir mon groupe":"Cacher mon groupe";
+  renderPartySession();
+});
+$("#party-reveal-groups-btn")?.addEventListener("click",()=>revealPartyGroups().catch(e=>toast("Groupes",e.message)));
+$("#party-new-group-round-btn")?.addEventListener("click",()=>startGroupParty().catch(e=>toast("Groupes",e.message)));
+
+$("[data-guess-play]").forEach(b=>b.addEventListener("click",()=>{
   guessSettings.play=b.dataset.guessPlay;
   $$("[data-guess-play]").forEach(x=>x.classList.toggle("active",x===b));
   guessChallenge=null;guessDuelRound=0;guessDuelScores=[null,null];
@@ -2709,6 +2755,23 @@ $$("[data-guess-difficulty]").forEach(b=>b.addEventListener("click",()=>{
 $("#join-code").addEventListener("input",e=>e.target.value=e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,""));
 $$("[data-game-tab]").forEach(b=>b.addEventListener("click",()=>setGameTab(b.dataset.gameTab)));
 document.addEventListener("click",e=>{
+  const roomMode=e.target.closest("[data-room-mode]")?.dataset.roomMode;
+  if(roomMode){
+    setRoomMode(roomMode).catch(err=>toast("Salon",err.message));
+    return;
+  }
+
+  const partyVote=e.target.closest("[data-party-vote]")?.dataset.partyVote;
+  if(partyVote){
+    castPartyVote(partyVote).catch(err=>toast("Vote",err.message));
+    return;
+  }
+
+  if(e.target.closest("[data-new-vs-round]")){
+    startVsParty().catch(err=>toast("VS",err.message));
+    return;
+  }
+
   const add=e.target.closest("[data-add-bot]");if(add)addBot(add.dataset.addBot,add.dataset.diff).then(()=>$("#bot-modal").classList.add("hidden"));
   const rem=e.target.closest("[data-remove-bot]");if(rem)removeBot(rem.dataset.removeBot);
   const mode=e.target.closest("[data-mode]")?.dataset.mode;if(mode){localSettings.mode=mode;$$("[data-mode]").forEach(x=>x.classList.toggle("active",x.dataset.mode===mode));$("#manual-anime-panel").classList.toggle("hidden",mode!=="manual");refreshAiStatus()}
