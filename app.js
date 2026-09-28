@@ -577,6 +577,7 @@ function subscribeGameData(gameNo){
       }
     });
 
+    partyVotes=all.filter(m=>m.kind==="party-vote");
     const next=all.filter(m=>m.kind!=="voice-signal"&&m.kind!=="party-vote");
     const fresh=[];
     if(collectionReady.messages){
@@ -1533,25 +1534,6 @@ async function processBotQueue(){
   finally{botQueueBusy=false;if(botMessageQueue.length)setTimeout(processBotQueue,80)}
 }
 
-async function clearPartyCollection(name){
-  if(!isHost||!fb||!currentRoom)return;
-  const snap=await fb.fsMod.getDocs(fb.fsMod.collection(db,"rooms",currentRoom,name));
-  if(snap.empty)return;
-
-  let batch=fb.fsMod.writeBatch(db);
-  let n=0;
-  for(const d of snap.docs){
-    batch.delete(d.ref);
-    n++;
-    if(n>=400){
-      await batch.commit();
-      batch=fb.fsMod.writeBatch(db);
-      n=0;
-    }
-  }
-  if(n)await batch.commit();
-}
-
 async function clearPartyVoteMessages(){
   if(!isHost||!fb||!currentRoom)return;
   const snap=await fb.fsMod.getDocs(
@@ -1721,74 +1703,6 @@ async function startCharacterParty(){
         playerName:p.name,
         name:ch.name,
         type:"personnage",
-        anime:ch.anime,
-        imageUrl:ch.imageUrl||"",
-        createdMs:now()
-      }
-    );
-  });
-  await batch.commit();
-
-  await fb.fsMod.updateDoc(
-    fb.fsMod.doc(db,"rooms",currentRoom),
-    {
-      status:"party",
-      selectedMode:"guess-character",
-      partySession:{
-        id:sessionId,
-        mode:"guess-character",
-        phase:"discussion",
-        round,
-        createdMs:now(),
-        revealedGroups:[]
-      }
-    }
-  );
-}
-
-async function startCharacterParty(){
-  if(!isHost)return;
-  const humans=players.filter(p=>now()-(p.lastSeenMs||0)<OFFLINE_DROP_MS);
-  if(humans.length<2)return toast("Devine mon personnage","2 joueurs humains minimum.");
-
-  await clearPartyCollection("partyAssignments");
-  await clearPartyCollection("partyVotes");
-
-  let pool=[];
-  try{
-    pool=await getOnlineCharacterPool();
-  }catch(e){
-    console.warn("Character party online pool",e);
-  }
-
-  if(!pool?.length){
-    pool=(localCharacters||[]).map((x,i)=>({
-      id:"local_"+i,
-      name:x.name,
-      anime:x.anime,
-      imageUrl:"",
-      source:"local"
-    }));
-  }
-
-  if(pool.length<humans.length)throw new Error("Pas assez de personnages disponibles.");
-
-  const shuffled=shuffle(pool).slice(0,humans.length);
-  const prev=currentRoomData?.partySession;
-  const round=(prev?.mode==="guess-character"?Number(prev.round||0):0)+1;
-  const sessionId=`character_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-
-  const batch=fb.fsMod.writeBatch(db);
-  humans.forEach((p,i)=>{
-    const ch=shuffled[i];
-    batch.set(
-      fb.fsMod.doc(db,"rooms",currentRoom,"partyAssignments",p.id),
-      {
-        sessionId,
-        playerId:p.id,
-        playerName:p.name,
-        kind:"character",
-        name:ch.name,
         anime:ch.anime,
         imageUrl:ch.imageUrl||"",
         createdMs:now()
