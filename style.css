@@ -1350,3 +1350,56 @@ body{
   font-size:8.5px;
   line-height:1.45;
 }
+
+
+/* =========================================================
+   V8.6.3 — SCROLL FIX ANDROID / WEBVIEW
+   ========================================================= */
+html,
+body{
+  height:auto!important;
+  min-height:100%!important;
+  overflow-x:hidden!important;
+  overflow-y:auto!important;
+  touch-action:auto!important;
+  overscroll-behavior-y:auto!important;
+  -webkit-overflow-scrolling:touch;
+}
+body{
+  position:static!important;
+}
+.app{
+  height:auto!important;
+  min-height:100dvh!important;
+  overflow-x:hidden!important;
+  overflow-y:visible!important;
+  touch-action:auto!important;
+}
+.screen,
+.screen.active{
+  height:auto!important;
+  max-height:none!important;
+  overflow-y:visible!important;
+  contain:none!important;
+  touch-action:pan-y!important;
+}
+#screen-lobby,
+#screen-lobby.active,
+#host-panel{
+  height:auto!important;
+  max-height:none!important;
+  overflow:visible!important;
+  touch-action:pan-y!important;
+}
+#screen-lobby{
+  padding-bottom:36px!important;
+}
+#start-game-btn,
+#leave-room-btn{
+  position:relative;
+  z-index:2;
+}
+.modal{
+  touch-action:pan-y!important;
+  -webkit-overflow-scrolling:touch;
+}
