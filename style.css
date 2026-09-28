@@ -1403,3 +1403,20 @@ body{
   touch-action:pan-y!important;
   -webkit-overflow-scrolling:touch;
 }
+
+
+/* =========================================================
+   V8.7 — ONLINE CHARACTER ENGINE
+   ========================================================= */
+.result-similarity{
+  display:block;
+  margin-top:6px;
+  padding:9px 10px;
+  border:1px solid #29435e;
+  border-radius:11px;
+  background:#091625;
+  color:#a9bbcd;
+  font-size:9px;
+  line-height:1.45;
+}
+.result-similarity b{color:#eef6ff}
