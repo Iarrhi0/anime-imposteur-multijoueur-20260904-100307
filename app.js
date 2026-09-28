@@ -439,16 +439,15 @@ async function enterRoom(code){
     }
   }));
   roomUnsubs.push(onSnapshot(doc(db,"rooms",code,"assignments",currentUser.uid),snap=>{
-    assignment=snap.exists()?snap.data():null;renderCharacter();
-  }));
-
-  roomUnsubs.push(onSnapshot(doc(db,"rooms",code,"partyAssignments",currentUser.uid),snap=>{
-    partyAssignment=snap.exists()?snap.data():null;
-    if(currentRoomData?.status==="party")scheduleRender();
-  }));
-
-  roomUnsubs.push(onSnapshot(collection(db,"rooms",code,"partyVotes"),snap=>{
-    partyVotes=snap.docs.map(d=>({id:d.id,...d.data()}));
+    const data=snap.exists()?snap.data():null;
+    if(data?.kind==="party-group"){
+      partyAssignment=data;
+      assignment=null;
+    }else{
+      assignment=data;
+      if(currentRoomData?.status!=="party")partyAssignment=null;
+    }
+    renderCharacter();
     if(currentRoomData?.status==="party")scheduleRender();
   }));
 
@@ -578,7 +577,8 @@ function subscribeGameData(gameNo){
       }
     });
 
-    const next=all.filter(m=>m.kind!=="voice-signal");
+    partyVotes=all.filter(m=>m.kind==="party-vote");
+    const next=all.filter(m=>m.kind!=="voice-signal"&&m.kind!=="party-vote");
     const fresh=[];
     if(collectionReady.messages){
       for(const m of next){
@@ -1553,6 +1553,24 @@ async function clearPartyCollection(name){
   if(n)await batch.commit();
 }
 
+async function clearPartyVoteMessages(){
+  if(!isHost||!fb||!currentRoom)return;
+  const snap=await fb.fsMod.getDocs(
+    fb.fsMod.query(
+      fb.fsMod.collection(db,"rooms",currentRoom,"messages"),
+      fb.fsMod.where("gameNo","==",currentRoomData?.gameNo||0)
+    )
+  );
+
+  const partyDocs=snap.docs.filter(d=>d.data()?.kind==="party-vote");
+  if(!partyDocs.length)return;
+
+  const batch=fb.fsMod.writeBatch(db);
+  partyDocs.forEach(d=>batch.delete(d.ref));
+  await batch.commit();
+  partyVotes=[];
+}
+
 async function setRoomMode(mode){
   if(!isHost||!currentRoom)return;
   await fb.fsMod.updateDoc(
@@ -1574,7 +1592,7 @@ async function startVsParty(){
   const humans=players.filter(p=>now()-(p.lastSeenMs||0)<OFFLINE_DROP_MS);
   if(humans.length<2)return toast("VS vocal","2 joueurs humains minimum.");
 
-  await clearPartyCollection("partyVotes");
+  await clearPartyVoteMessages();
 
   const prev=currentRoomData?.partySession;
   const round=(prev?.mode==="vs"?Number(prev.round||0):0)+1;
@@ -1635,12 +1653,14 @@ async function castPartyVote(choice){
   if(!["A","B"].includes(choice))return;
 
   await fb.fsMod.setDoc(
-    fb.fsMod.doc(db,"rooms",currentRoom,"partyVotes",currentUser.uid),
+    fb.fsMod.doc(db,"rooms",currentRoom,"messages",`partyvote_${s.id}_${currentUser.uid}`),
     {
+      kind:"party-vote",
       sessionId:s.id,
       playerId:currentUser.uid,
       playerName:participantById(currentUser.uid)?.name||"Joueur",
       choice,
+      gameNo:currentRoomData?.gameNo||0,
       createdMs:now()
     }
   );
@@ -1669,8 +1689,7 @@ async function startGroupParty(){
   const humans=players.filter(p=>now()-(p.lastSeenMs||0)<OFFLINE_DROP_MS);
   if(humans.length<2)return toast("Devine mon groupe","2 joueurs humains minimum.");
 
-  await clearPartyCollection("partyAssignments");
-  await clearPartyCollection("partyVotes");
+  await clearPartyVoteMessages();
 
   const groups=shuffle(allGuessGroups());
   const prev=currentRoomData?.partySession;
@@ -1681,8 +1700,9 @@ async function startGroupParty(){
   humans.forEach((p,i)=>{
     const g=groups[i%groups.length];
     batch.set(
-      fb.fsMod.doc(db,"rooms",currentRoom,"partyAssignments",p.id),
+      fb.fsMod.doc(db,"rooms",currentRoom,"assignments",p.id),
       {
+        kind:"party-group",
         sessionId,
         playerId:p.id,
         playerName:p.name,
@@ -1720,7 +1740,7 @@ async function revealPartyGroups(){
   if(!s||s.mode!=="guess-group")return;
 
   const snap=await fb.fsMod.getDocs(
-    fb.fsMod.collection(db,"rooms",currentRoom,"partyAssignments")
+    fb.fsMod.collection(db,"rooms",currentRoom,"assignments")
   );
 
   const revealed=snap.docs
