@@ -139,6 +139,7 @@ function cleanupRoom(){
   discussionMode="text";
   playersReady=false;botsReady=false;
   hints=[];messages=[];voteApprovals=[];voteStatuses=[];
+  partyAssignment=null;partyVotes=[];
   lastHintIds.clear();lastMessageIds.clear();
   collectionReady={hints:false,messages:false,approvals:false,voteStatus:false};
 }
@@ -276,7 +277,8 @@ async function createRoom({solo=false}={}){
 
     await setDoc(doc(db,"rooms",code),{
       hostUid:currentUser.uid,hostLeaseUntil:Timestamp.fromMillis(now()+HOST_LEASE_MS),
-      status:"lobby",gameNo:0,hintRound:0,turnIndex:0,order:[],roster:[],activeIds:[],
+      status:"lobby",selectedMode:"impostor",partySession:null,
+      gameNo:0,hintRound:0,turnIndex:0,order:[],roster:[],activeIds:[],
       hiddenHints:false,reconsiderSeconds:15,voteProposal:null,voteRound:0,
       voteStage:null,voteCandidates:[],voteVoters:[],reconsiderEndsAt:null,result:null,createdAt:serverTimestamp()
     });
@@ -439,6 +441,17 @@ async function enterRoom(code){
   roomUnsubs.push(onSnapshot(doc(db,"rooms",code,"assignments",currentUser.uid),snap=>{
     assignment=snap.exists()?snap.data():null;renderCharacter();
   }));
+
+  roomUnsubs.push(onSnapshot(doc(db,"rooms",code,"partyAssignments",currentUser.uid),snap=>{
+    partyAssignment=snap.exists()?snap.data():null;
+    if(currentRoomData?.status==="party")scheduleRender();
+  }));
+
+  roomUnsubs.push(onSnapshot(collection(db,"rooms",code,"partyVotes"),snap=>{
+    partyVotes=snap.docs.map(d=>({id:d.id,...d.data()}));
+    if(currentRoomData?.status==="party")scheduleRender();
+  }));
+
   startHeartbeat();startHostClaimWatcher();
 }
 
