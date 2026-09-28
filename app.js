@@ -1,11 +1,17 @@
 import { firebaseConfig } from "./firebase-config.js";
-import { VoiceEngine } from "./voice-engine.js?v=8.7.0";
-import { animeDB, chooseIntelligentPair } from "./ai-engine.js?v=8.7.0";
-import { chooseOnlineIntelligentPair, warmOnlineCharacterPool, getOnlineEngineInfo } from "./online-character-engine.js?v=8.7.0";
+import { VoiceEngine } from "./voice-engine.js?v=9.0.0";
+import { animeDB, chooseIntelligentPair } from "./ai-engine.js?v=9.0.0";
+import { chooseOnlineIntelligentPair, warmOnlineCharacterPool, getOnlineEngineInfo } from "./online-character-engine.js?v=9.0.0";
+import { chooseUniverseConceptPair, conceptEngineStats } from "./concept-engine.js?v=9.0.0";
+import {
+  newGuessCharacterChallenge,
+  submitCharacterGuess,
+  revealGuessHint
+} from "./guess-character-engine.js?v=9.0.0";
 import {
   chooseAdaptiveBotHint, chooseBotVote, botVoteApproval,
   buildBotDiscussion, shouldBotReply, botReplyDelay, resetBotMemory
-} from "./bot-engine.js?v=8.7.0";
+} from "./bot-engine.js?v=9.0.0";
 
 const $=s=>document.querySelector(s);
 const $$=s=>[...document.querySelectorAll(s)];
@@ -49,7 +55,11 @@ let botVoteWatchdogTimer=null;
 let botVoteTimers=new Map();
 let clientBotConfirming=new Set();
 const characterImageCache=new Map();
-const localSettings={mode:"auto",difficulty:"hard"};
+const localSettings={mode:"auto",difficulty:"hard",pairVariant:"mixed"};
+const guessSettings={play:"solo",difficulty:"normal"};
+let guessChallenge=null;
+let guessDuelRound=0;
+let guessDuelScores=[null,null];
 
 const esc=s=>String(s??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]));
 const norm=s=>String(s||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"");
@@ -724,14 +734,28 @@ async function startGame(){
   if(startBtn){startBtn.disabled=true;startBtn.textContent="🌐 Recherche de personnages…"}
 
   let pair;
+  const allowedAnime=localSettings.mode==="manual"?selectedAnime():null;
+  const variant=localSettings.pairVariant==="mixed"
+    ?(Math.random()<.48?"universe":"similar")
+    :localSettings.pairVariant;
+
   try{
-    pair=await chooseOnlineIntelligentPair({
-      difficulty:localSettings.difficulty,
-      allowedAnime:localSettings.mode==="manual"?selectedAnime():null,
-      mix:$("#mix-anime").checked
-    });
+    if(variant==="universe"){
+      pair=await chooseUniverseConceptPair({
+        difficulty:localSettings.difficulty,
+        allowedAnime
+      });
+    }
+
+    if(!pair){
+      pair=await chooseOnlineIntelligentPair({
+        difficulty:localSettings.difficulty,
+        allowedAnime,
+        mix:$("#mix-anime").checked
+      });
+    }
   }catch(e){
-    console.warn("Online pair engine failed",e);
+    console.warn("Dynamic pair engine failed",e);
     pair=chooseIntelligentPair({
       difficulty:localSettings.difficulty,
       allowedAnime:selectedAnime(),
@@ -1711,7 +1735,7 @@ function renderScores(){patchHTML("#score-list",participants().sort((a,b)=>(b.sc
 function renderBadges(){patchText("#hints-badge",unreadHints);$("#hints-badge").classList.toggle("hidden",!unreadHints);patchText("#chat-badge",unreadChat);$("#chat-badge").classList.toggle("hidden",!unreadChat)}
 function setGameTab(tab){
   activeTab=tab;if(tab==="hints")unreadHints=0;else unreadChat=0;
-  $("[data-game-tab]").forEach(b=>b.classList.toggle("active",b.dataset.gameTab===tab));
+  $$("[data-game-tab]").forEach(b=>b.classList.toggle("active",b.dataset.gameTab===tab));
   renderBadges();scheduleRender();
 }
 
@@ -1729,14 +1753,19 @@ function warmOnlineAi(){
 
 function refreshAiStatus(){
   const info=getOnlineEngineInfo();
+  const concepts=conceptEngineStats();
   const count=info.cachedCount;
-  patchText(
-    "#ai-status",
-    count?`🌐 ${count} personnages populaires disponibles`:"🌐 Catalogue Internet en préparation…"
-  );
+  const variant=localSettings.pairVariant;
+  const label=variant==="universe"
+    ?`🧩 ${concepts.concepts} concepts • ${concepts.packs} univers`
+    :variant==="similar"
+      ?(count?`🌐 ${count} personnages populaires`:"🌐 Catalogue Internet en préparation…")
+      :`🎲 Mix : personnages + ${concepts.concepts} concepts`;
+
+  patchText("#ai-status",label);
   patchText(
     "#ai-details",
-    "Mélange dynamique • points communs multiples • anti-répétition des personnages et des duos."
+    "Anti-répétition renforcé • objets, pouvoirs, lieux et personnages • sélection par points communs."
   );
   warmOnlineAi();
 }
@@ -1744,6 +1773,148 @@ async function addBot(name,difficulty){if(isHost)await fb.fsMod.setDoc(fb.fsMod.
 async function fillBots(target=4){if(!isHost)return;const a=BOT_PROFILES.filter(p=>!bots.some(b=>b.name===p.name));for(const p of a.slice(0,Math.max(0,target-bots.length)))await addBot(p.name,p.difficulty)}
 async function removeBot(id){if(isHost)await fb.fsMod.deleteDoc(fb.fsMod.doc(db,"rooms",currentRoom,"bots",id))}
 function openBotModal(){patchHTML("#bot-options",BOT_PROFILES.map(p=>`<div class="player-row"><div class="avatar bot">🤖</div><div class="player-meta"><div class="player-name">${p.name}</div><div class="player-sub">${p.difficulty}</div></div><button class="mini-btn" data-add-bot="${p.name}" data-diff="${p.difficulty}">Ajouter</button></div>`).join(""));$("#bot-modal").classList.remove("hidden")}
+
+
+function openGuessCharacterMode(){
+  guessChallenge=null;
+  guessDuelRound=0;
+  guessDuelScores=[null,null];
+  $("#guess-game-card")?.classList.add("hidden");
+  $("#guess-player-card")?.classList.add("hidden");
+  $("#guess-start-btn")?.classList.remove("hidden");
+  $("#guess-start-btn").textContent="Commencer";
+  $("#guess-feedback").textContent="";
+  show("guess-character");
+}
+
+function guessScoreValue(challenge){
+  if(!challenge)return 99;
+  return challenge.solved?challenge.attempts:challenge.maxAttempts+2;
+}
+
+function renderGuessDuelStatus(){
+  const duo=guessSettings.play==="duo";
+  $("#guess-player-card")?.classList.toggle("hidden",!duo);
+  if(!duo)return;
+
+  patchText("#guess-player-label",`Joueur ${guessDuelRound+1}`);
+  const s1=guessDuelScores[0]==null?"—":guessDuelScores[0];
+  const s2=guessDuelScores[1]==null?"—":guessDuelScores[1];
+  patchText("#guess-duel-score",`Score : J1 ${s1} • J2 ${s2}`);
+}
+
+function renderGuessCharacter(){
+  const ch=guessChallenge;
+  if(!ch)return;
+
+  $("#guess-game-card")?.classList.remove("hidden");
+  $("#guess-start-btn")?.classList.add("hidden");
+
+  const shown=ch.clues.slice(0,ch.revealed);
+  patchHTML(
+    "#guess-clues",
+    shown.map((x,i)=>`<div class="guess-clue"><span>${i+1}</span><strong>${esc(x)}</strong></div>`).join("")
+  );
+
+  patchText("#guess-attempts",`${ch.attempts} / ${ch.maxAttempts} essais`);
+  const img=$("#guess-character-image");
+  if(img){
+    img.src=ch.character.imageUrl||fallbackCharacterImage(ch.character.name);
+    const ratio=ch.clues.length?ch.revealed/ch.clues.length:0;
+    const blur=ch.finished?0:Math.max(8,28-Math.round(ratio*14));
+    img.style.filter=`blur(${blur}px)`;
+  }
+
+  $("#guess-image-mask")?.classList.toggle("hidden",ch.finished);
+  $("#guess-input").disabled=ch.finished;
+  $("#guess-submit-btn").disabled=ch.finished;
+  $("#guess-hint-btn").disabled=ch.finished||ch.revealed>=ch.clues.length;
+
+  if(ch.finished){
+    const answer=`${ch.character.name} — ${ch.character.anime}`;
+    patchText(
+      "#guess-feedback",
+      ch.solved
+        ?`✅ Trouvé en ${ch.attempts} essai${ch.attempts>1?"s":""} : ${answer}`
+        :`❌ Réponse : ${answer}`
+    );
+
+    if(guessSettings.play==="duo"){
+      guessDuelScores[guessDuelRound]=guessScoreValue(ch);
+
+      if(guessDuelRound===0){
+        $("#guess-next-btn").textContent="Passer au Joueur 2";
+      }else{
+        const a=guessDuelScores[0],b=guessDuelScores[1];
+        const result=a===b?"Égalité !":a<b?"Joueur 1 gagne !":"Joueur 2 gagne !";
+        patchText("#guess-feedback",`${$("#guess-feedback").textContent} • ${result}`);
+        $("#guess-next-btn").textContent="Rejouer le duel";
+      }
+      renderGuessDuelStatus();
+    }else{
+      $("#guess-next-btn").textContent="Nouvelle manche";
+    }
+
+    $("#guess-next-btn")?.classList.remove("hidden");
+  }else{
+    $("#guess-next-btn")?.classList.add("hidden");
+  }
+}
+
+async function startGuessRound(){
+  const btn=$("#guess-start-btn");
+  if(btn){btn.disabled=true;btn.textContent="🌐 Recherche…"}
+  try{
+    guessChallenge=await newGuessCharacterChallenge({difficulty:guessSettings.difficulty});
+    $("#guess-input").value="";
+    $("#guess-feedback").textContent="";
+    renderGuessDuelStatus();
+    renderGuessCharacter();
+    $("#guess-input")?.focus();
+  }catch(e){
+    toast("Devine mon personnage",e.message||"Impossible de charger un personnage.");
+  }finally{
+    if(btn){btn.disabled=false;btn.textContent="Commencer"}
+  }
+}
+
+function submitGuessCharacter(){
+  if(!guessChallenge)return;
+  const input=$("#guess-input").value;
+  const result=submitCharacterGuess(guessChallenge,input);
+  if(result.empty)return toast("Réponse","Écris le nom d’un personnage.");
+  if(!result.correct&&!result.finished){
+    patchText("#guess-feedback","Pas encore. Un nouvel indice vient d’être révélé.");
+    $("#guess-input").value="";
+  }
+  renderGuessCharacter();
+}
+
+async function advanceGuessRound(){
+  if(guessSettings.play==="duo"){
+    if(guessDuelRound===0){
+      guessDuelRound=1;
+      guessChallenge=null;
+      $("#guess-game-card")?.classList.add("hidden");
+      $("#guess-start-btn")?.classList.remove("hidden");
+      $("#guess-start-btn").textContent="Commencer le tour du Joueur 2";
+      renderGuessDuelStatus();
+      return;
+    }
+
+    guessDuelRound=0;
+    guessDuelScores=[null,null];
+    guessChallenge=null;
+    $("#guess-game-card")?.classList.add("hidden");
+    $("#guess-start-btn")?.classList.remove("hidden");
+    $("#guess-start-btn").textContent="Recommencer le duel";
+    renderGuessDuelStatus();
+    return;
+  }
+
+  guessChallenge=null;
+  await startGuessRound();
+}
 
 function armAppHistory(){
   if(historyGuardReady)return;
@@ -1788,13 +1959,19 @@ function handleAppBack(){
     return;
   }
 
-  // 3. Dans une salle ou une partie : confirmation avant de quitter.
+  // 3. Devine mon personnage : retour direct au menu.
+  if(currentScreen==="guess-character"){
+    show("home");
+    return;
+  }
+
+  // 4. Dans une salle ou une partie : confirmation avant de quitter.
   if(currentScreen==="game" || currentScreen==="lobby"){
     openLeaveModal();
     return;
   }
 
-  // 4. Accueil : on ne ferme pas brutalement Chrome/PWA.
+  // 5. Accueil : on ne ferme pas brutalement Chrome/PWA.
   toast("Accueil","Tu es déjà dans le menu principal.");
 }
 
@@ -1922,13 +2099,44 @@ $("#close-bot-modal").addEventListener("click",()=>$("#bot-modal").classList.add
 $("#leave-room-btn").addEventListener("click",openLeaveModal);$("#leave-game-btn").addEventListener("click",openLeaveModal);
 $("#confirm-leave-btn").addEventListener("click",leaveRoom);$("#cancel-leave-btn").addEventListener("click",()=>{closeLeaveModal();rearmAppHistory()});
 $("#install-now-btn").addEventListener("click",installApp);$("#install-later-btn").addEventListener("click",()=>{localStorage.setItem(INSTALL_SEEN_KEY,"1");$("#install-modal").classList.add("hidden")});
+$("#open-guess-mode-btn")?.addEventListener("click",openGuessCharacterMode);
+$("#open-impostor-mode-btn")?.addEventListener("click",()=>$("#home-name")?.focus());
+$("#guess-back-btn")?.addEventListener("click",()=>show("home"));
+$("#guess-start-btn")?.addEventListener("click",()=>startGuessRound());
+$("#guess-submit-btn")?.addEventListener("click",submitGuessCharacter);
+$("#guess-hint-btn")?.addEventListener("click",()=>{
+  if(!guessChallenge)return;
+  revealGuessHint(guessChallenge);
+  renderGuessCharacter();
+});
+$("#guess-next-btn")?.addEventListener("click",()=>advanceGuessRound());
+$("#guess-input")?.addEventListener("keydown",e=>{if(e.key==="Enter")submitGuessCharacter()});
+$("[data-guess-play]").forEach(b=>b.addEventListener("click",()=>{
+  guessSettings.play=b.dataset.guessPlay;
+  $("[data-guess-play]").forEach(x=>x.classList.toggle("active",x===b));
+  guessChallenge=null;guessDuelRound=0;guessDuelScores=[null,null];
+  $("#guess-game-card")?.classList.add("hidden");
+  $("#guess-start-btn")?.classList.remove("hidden");
+  renderGuessDuelStatus();
+}));
+$("[data-guess-difficulty]").forEach(b=>b.addEventListener("click",()=>{
+  guessSettings.difficulty=b.dataset.guessDifficulty;
+  $("[data-guess-difficulty]").forEach(x=>x.classList.toggle("active",x===b));
+}));
+
 $("#join-code").addEventListener("input",e=>e.target.value=e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,""));
-$$("[data-game-tab]").forEach(b=>b.addEventListener("click",()=>setGameTab(b.dataset.gameTab)));
+$$$("[data-game-tab]").forEach(b=>b.addEventListener("click",()=>setGameTab(b.dataset.gameTab)));
 document.addEventListener("click",e=>{
   const add=e.target.closest("[data-add-bot]");if(add)addBot(add.dataset.addBot,add.dataset.diff).then(()=>$("#bot-modal").classList.add("hidden"));
   const rem=e.target.closest("[data-remove-bot]");if(rem)removeBot(rem.dataset.removeBot);
   const mode=e.target.closest("[data-mode]")?.dataset.mode;if(mode){localSettings.mode=mode;$$("[data-mode]").forEach(x=>x.classList.toggle("active",x.dataset.mode===mode));$("#manual-anime-panel").classList.toggle("hidden",mode!=="manual");refreshAiStatus()}
-  const diff=e.target.closest("[data-difficulty]")?.dataset.difficulty;if(diff){localSettings.difficulty=diff;$$("[data-difficulty]").forEach(x=>x.classList.toggle("active",x.dataset.difficulty===diff));refreshAiStatus()}
+  const diff=e.target.closest("[data-difficulty]")?.dataset.difficulty;if(diff){localSettings.difficulty=diff;$("[data-difficulty]").forEach(x=>x.classList.toggle("active",x.dataset.difficulty===diff));refreshAiStatus()}
+  const variant=e.target.closest("[data-pair-variant]")?.dataset.pairVariant;if(variant){
+    localSettings.pairVariant=variant;
+    $("[data-pair-variant]").forEach(x=>x.classList.toggle("active",x.dataset.pairVariant===variant));
+    $("#mix-anime").disabled=variant==="universe";
+    refreshAiStatus();
+  }
 });
 $("#mix-anime").addEventListener("change",refreshAiStatus);$("#anime-grid").addEventListener("change",refreshAiStatus);
 document.addEventListener("visibilitychange",()=>{
@@ -1945,12 +2153,12 @@ if("serviceWorker" in navigator){
       const keys=await caches.keys();
       await Promise.all(
         keys
-          .filter(k=>k.startsWith("anime-imposteur-") && k!=="anime-imposteur-v8-7-0")
+          .filter(k=>k.startsWith("anime-imposteur-") && k!=="anime-imposteur-v9-0-0")
           .map(k=>caches.delete(k))
       );
 
       const reg=await navigator.serviceWorker.register(
-        "./service-worker.js?v=8.7.0",
+        "./service-worker.js?v=9.0.0",
         {updateViaCache:"none"}
       );
       await reg.update().catch(()=>{});
