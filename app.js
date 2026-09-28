@@ -1637,7 +1637,7 @@ async function openPartyVote(){
   const s=currentRoomData?.partySession;
   if(!s||s.mode!=="vs")return;
 
-  await clearPartyCollection("partyVotes");
+  await clearPartyVoteMessages();
   await fb.fsMod.updateDoc(
     fb.fsMod.doc(db,"rooms",currentRoom),
     {
@@ -1874,6 +1874,7 @@ function renderPartySession(){
   const session=currentRoomData.partySession||{};
   const mode=session.mode||"vs";
   patchText("#party-room-code",currentRoom||"-----");
+  $("#party-change-game-btn")?.classList.toggle("hidden",!isHost);
   patchText(
     "#party-round-label",
     `${mode==="vs"?"VS vocal":"Devine mon groupe"} • Manche ${session.round||1}`
