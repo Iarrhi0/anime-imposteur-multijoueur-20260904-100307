@@ -14,6 +14,39 @@ function makeId(prefix="voice"){
   return `${prefix}_${id}`;
 }
 
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+
+async function openMicrophoneStream(){
+  const preferred={
+    audio:{
+      echoCancellation:true,
+      noiseSuppression:true,
+      autoGainControl:true
+    },
+    video:false
+  };
+
+  try{
+    return await navigator.mediaDevices.getUserMedia(preferred);
+  }catch(first){
+    const retryable=["NotReadableError","AbortError","TrackStartError"].includes(first?.name);
+    if(!retryable)throw first;
+
+    await sleep(450);
+    try{
+      return await navigator.mediaDevices.getUserMedia({audio:true,video:false});
+    }catch(second){
+      const e=new Error(
+        ["NotReadableError","AbortError","TrackStartError"].includes(second?.name)
+          ?"Le microphone n’a pas pu démarrer. Ferme les appels, enregistreurs ou autres applications qui utilisent le micro, puis réessaie."
+          :second?.message||"Impossible d’ouvrir le microphone."
+      );
+      e.name=second?.name||"MicrophoneError";
+      throw e;
+    }
+  }
+}
+
 export class VoiceEngine {
   constructor({onChange=()=>{},toast=()=>{}}={}){
     this.onChange=onChange;
@@ -117,10 +150,7 @@ export class VoiceEngine {
 
     try{
       await this.loadIceServers(authToken);
-      this.stream=await navigator.mediaDevices.getUserMedia({
-        audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true},
-        video:false
-      });
+      this.stream=await openMicrophoneStream();
 
       await this.fs.setDoc(
         this.fs.doc(this.db,"rooms",roomId,"players",uid),
