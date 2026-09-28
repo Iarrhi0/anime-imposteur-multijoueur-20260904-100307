@@ -1,24 +1,24 @@
 import { firebaseConfig } from "./firebase-config.js";
-import { VoiceEngine } from "./voice-engine.js?v=10.0.1";
-import { animeDB, characters as localCharacters, chooseIntelligentPair } from "./ai-engine.js?v=10.0.1";
-import { chooseOnlineIntelligentPair, warmOnlineCharacterPool, getOnlineCharacterPool, getOnlineEngineInfo } from "./online-character-engine.js?v=10.0.1";
-import { chooseUniverseConceptPair, conceptEngineStats } from "./concept-engine.js?v=10.0.1";
+import { VoiceEngine } from "./voice-engine.js?v=10.0.0";
+import { animeDB, characters as localCharacters, chooseIntelligentPair } from "./ai-engine.js?v=10.0.0";
+import { chooseOnlineIntelligentPair, warmOnlineCharacterPool, getOnlineCharacterPool, getOnlineEngineInfo } from "./online-character-engine.js?v=10.0.0";
+import { chooseUniverseConceptPair, conceptEngineStats } from "./concept-engine.js?v=10.0.0";
 import {
   newGuessCharacterChallenge,
   submitCharacterGuess,
   revealGuessHint
-} from "./guess-character-engine.js?v=10.0.1";
+} from "./guess-character-engine.js?v=10.0.0";
 import {
   newGuessGroupChallenge,
   submitGroupGuess,
   revealGroupHint,
   allGuessGroups
-} from "./group-engine.js?v=10.0.1";
-import { newVsPrompt, vsStats } from "./vs-engine.js?v=10.0.1";
+} from "./group-engine.js?v=10.0.0";
+import { newVsPrompt, vsStats } from "./vs-engine.js?v=10.0.0";
 import {
   chooseAdaptiveBotHint, chooseBotVote, botVoteApproval,
   buildBotDiscussion, shouldBotReply, botReplyDelay, resetBotMemory
-} from "./bot-engine.js?v=10.0.1";
+} from "./bot-engine.js?v=10.0.0";
 
 const $=s=>document.querySelector(s);
 const $$=s=>[...document.querySelectorAll(s)];
@@ -1534,25 +1534,6 @@ async function processBotQueue(){
   finally{botQueueBusy=false;if(botMessageQueue.length)setTimeout(processBotQueue,80)}
 }
 
-async function clearPartyCollection(name){
-  if(!isHost||!fb||!currentRoom)return;
-  const snap=await fb.fsMod.getDocs(fb.fsMod.collection(db,"rooms",currentRoom,name));
-  if(snap.empty)return;
-
-  let batch=fb.fsMod.writeBatch(db);
-  let n=0;
-  for(const d of snap.docs){
-    batch.delete(d.ref);
-    n++;
-    if(n>=400){
-      await batch.commit();
-      batch=fb.fsMod.writeBatch(db);
-      n=0;
-    }
-  }
-  if(n)await batch.commit();
-}
-
 async function clearPartyVoteMessages(){
   if(!isHost||!fb||!currentRoom)return;
   const snap=await fb.fsMod.getDocs(
@@ -1940,6 +1921,7 @@ function renderPartySession(){
 
   const session=currentRoomData.partySession||{};
   const mode=session.mode||"vs";
+  $("#party-change-game-btn")?.classList.toggle("hidden",!isHost);
   patchText("#party-room-code",currentRoom||"-----");
   $("#party-change-game-btn")?.classList.toggle("hidden",!isHost);
   patchText(
@@ -2086,7 +2068,8 @@ function renderHints(){
   patchText("#hint-count",data.length);patchHTML("#hints-list",data.slice(-60).map(h=>`<div class="hint-row"><b>${esc(h.playerName)}</b><strong>${h.revealed?esc(h.word):"••••"}</strong><span>T${h.round}</span></div>`).join("")||`<div class="player-sub">Aucun indice.</div>`);
 }
 function renderMessages(){
-  const data=messages.slice(-80),key=data.map(m=>m.id).join(",");
+  const data=messages.slice(-80);
+  const key=data.map(m=>m.id).join(",");
   const html=data.map(m=>`<div class="message ${m.playerId===currentUser?.uid?"me":""}"><div class="who">${esc(m.playerName)}</div><div class="body">${esc(m.text)}</div></div>`).join("");
 
   for(const list of [$("#chat-list"),$("#party-chat-list")].filter(Boolean)){
@@ -2932,12 +2915,12 @@ if("serviceWorker" in navigator){
       const keys=await caches.keys();
       await Promise.all(
         keys
-          .filter(k=>k.startsWith("anime-imposteur-") && k!=="anime-imposteur-v10-0-1")
+          .filter(k=>k.startsWith("anime-imposteur-") && k!=="anime-imposteur-v10-0-0")
           .map(k=>caches.delete(k))
       );
 
       const reg=await navigator.serviceWorker.register(
-        "./service-worker.js?v=10.0.1",
+        "./service-worker.js?v=10.0.0",
         {updateViaCache:"none"}
       );
       await reg.update().catch(()=>{});
