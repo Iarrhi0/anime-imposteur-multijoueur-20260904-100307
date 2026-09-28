@@ -1,10 +1,11 @@
 import { firebaseConfig } from "./firebase-config.js";
-import { VoiceEngine } from "./voice-engine.js?v=8.6.4";
-import { animeDB, chooseIntelligentPair, getAiStats } from "./ai-engine.js?v=8.6.4";
+import { VoiceEngine } from "./voice-engine.js?v=8.7.0";
+import { animeDB, chooseIntelligentPair, getAiStats } from "./ai-engine.js?v=8.7.0";
+import { chooseOnlineIntelligentPair, warmOnlineCharacterPool, getOnlineEngineInfo } from "./online-character-engine.js?v=8.7.0";
 import {
   chooseAdaptiveBotHint, chooseBotVote, botVoteApproval,
   buildBotDiscussion, shouldBotReply, botReplyDelay, resetBotMemory
-} from "./bot-engine.js?v=8.6.4";
+} from "./bot-engine.js?v=8.7.0";
 
 const $=s=>document.querySelector(s);
 const $$=s=>[...document.querySelectorAll(s)];
@@ -717,7 +718,30 @@ async function startGame(){
   if(!isHost)return;
   const humans=players.filter(p=>now()-(p.lastSeenMs||0)<OFFLINE_DROP_MS);
   const all=[...humans,...bots];if(all.length<3)return toast("3 participants minimum");
-  const pair=chooseIntelligentPair({difficulty:localSettings.difficulty,allowedAnime:selectedAnime(),mix:$("#mix-anime").checked,popularityMin:96});
+
+  const startBtn=$("#start-game-btn");
+  const startLabel=startBtn?.textContent||"Commencer la partie";
+  if(startBtn){startBtn.disabled=true;startBtn.textContent="🌐 Recherche de personnages…"}
+
+  let pair;
+  try{
+    pair=await chooseOnlineIntelligentPair({
+      difficulty:localSettings.difficulty,
+      allowedAnime:localSettings.mode==="manual"?selectedAnime():null,
+      mix:$("#mix-anime").checked
+    });
+  }catch(e){
+    console.warn("Online pair engine failed",e);
+    pair=chooseIntelligentPair({
+      difficulty:localSettings.difficulty,
+      allowedAnime:selectedAnime(),
+      mix:$("#mix-anime").checked,
+      popularityMin:92
+    });
+  }finally{
+    if(startBtn){startBtn.disabled=false;startBtn.textContent=startLabel}
+  }
+
   if(!pair)return toast("Aucun duo disponible");
   const reverse=Math.random()<.5,majority=reverse?pair.b:pair.a,outsider=reverse?pair.a:pair.b;
   const impostor=all[Math.floor(Math.random()*all.length)],gameNo=(currentRoomData.gameNo||0)+1;
@@ -1669,7 +1693,7 @@ async function renderResult(){
   const r=currentRoomData.result;if(!r)return;
   const normals=r.winner==="normal";patchText("#result-emoji",normals?"🏆":"😈");patchText("#result-title",normals?"Les joueurs normaux gagnent !":"L’imposteur gagne !");
   patchText("#result-majority-name",r.majority.name);patchText("#result-impostor-name",r.outsider.name);$("#result-images").classList.remove("hidden");
-  setCharacterPhoto($("#result-majority-photo"),r.majority.name);setCharacterPhoto($("#result-impostor-photo"),r.outsider.name);
+  setCharacterPhoto($("#result-majority-photo"),r.majority.name,r.majority.imageUrl||"");setCharacterPhoto($("#result-impostor-photo"),r.outsider.name,r.outsider.imageUrl||"");
   const imp=participantById(r.impostorId),elim=participantById(r.eliminatedId);
   $("#result-text").innerHTML=normals?`L’imposteur était <b>${esc(imp?.name||"")}</b>.`:`Le groupe a éliminé <b>${esc(elim?.name||"")}</b>.<br><br>L’imposteur était <b>${esc(imp?.name||"")}</b>.`;
 }
@@ -1681,12 +1705,30 @@ function setGameTab(tab){
   renderBadges();scheduleRender();
 }
 
-function selectedAnime(){return localSettings.mode==="auto"?animeDB:$$("#anime-grid input:checked").map(x=>x.value)}
+function selectedAnime(){return localSettings.mode==="auto"?animeDB:$("#anime-grid input:checked").map(x=>x.value)}
 function renderAnimeGrid(){patchHTML("#anime-grid",animeDB.map(a=>`<label class="anime-option"><input type="checkbox" value="${esc(a)}" checked> ${esc(a)}</label>`).join(""))}
+
+let onlineAiWarmStarted=false;
+function warmOnlineAi(){
+  if(onlineAiWarmStarted)return;
+  onlineAiWarmStarted=true;
+  warmOnlineCharacterPool()
+    .then(()=>refreshAiStatus())
+    .catch(e=>console.warn("AniList warmup",e));
+}
+
 function refreshAiStatus(){
-  const stats=getAiStats({difficulty:localSettings.difficulty,allowedAnime:selectedAnime(),mix:$("#mix-anime").checked,popularityMin:96});
-  patchText("#ai-status",stats.count?`${stats.count} duos vérifiés`:"Aucun duo avec ces filtres");
-  patchText("#ai-details","Paires vérifiées manuellement • apparence + personnalité + rôle + combat + histoire.");
+  const info=getOnlineEngineInfo();
+  const count=info.cachedCount;
+  patchText(
+    "#ai-status",
+    count?`🌐 ${count} personnages populaires disponibles`:"🌐 Catalogue Internet en préparation…"
+  );
+  patchText(
+    "#ai-details",
+    "Mélange dynamique • points communs multiples • anti-répétition des personnages et des duos."
+  );
+  warmOnlineAi();
 }
 async function addBot(name,difficulty){if(isHost)await fb.fsMod.setDoc(fb.fsMod.doc(db,"rooms",currentRoom,"bots",randomId("bot")),{name,difficulty,type:"bot",score:0})}
 async function fillBots(target=4){if(!isHost)return;const a=BOT_PROFILES.filter(p=>!bots.some(b=>b.name===p.name));for(const p of a.slice(0,Math.max(0,target-bots.length)))await addBot(p.name,p.difficulty)}
@@ -1793,7 +1835,11 @@ function fallbackCharacterImage(name){
   const clean=String(name||"?").replace(/[&<>]/g,""),svg=`<svg xmlns="http://www.w3.org/2000/svg" width="240" height="320"><rect width="100%" height="100%" fill="#111c2b"/><circle cx="120" cy="115" r="54" fill="#7c3aed"/><text x="120" y="225" text-anchor="middle" fill="white" font-family="Arial" font-size="18">${clean}</text></svg>`;
   return "data:image/svg+xml;charset=utf-8,"+encodeURIComponent(svg);
 }
-async function getCharacterImage(name){
+async function getCharacterImage(name,directUrl=""){
+  if(directUrl){
+    characterImageCache.set(name,directUrl);
+    return directUrl;
+  }
   if(characterImageCache.has(name))return characterImageCache.get(name);
   const key="anime_char_img_v7_"+name;try{const c=localStorage.getItem(key);if(c){characterImageCache.set(name,c);return c}}catch{}
   try{
@@ -1802,12 +1848,16 @@ async function getCharacterImage(name){
   }catch{}
   return fallbackCharacterImage(name);
 }
-async function setCharacterPhoto(img,name){if(!img)return;img.onerror=()=>{img.onerror=null;img.src=fallbackCharacterImage(name)};img.src=await getCharacterImage(name)}
+async function setCharacterPhoto(img,name,directUrl=""){
+  if(!img)return;
+  img.onerror=()=>{img.onerror=null;img.src=fallbackCharacterImage(name)};
+  img.src=await getCharacterImage(name,directUrl);
+}
 async function renderCharacter(){
   const visible=$("#toggle-character-btn").dataset.visible==="1";
   if(!assignment){patchText("#character-name","••••••");patchText("#character-anime","Secret");$("#character-photo-wrap").classList.add("hidden");return}
   patchText("#character-name",visible?assignment.name:"••••••");patchText("#character-anime",visible?assignment.anime:"Secret");
-  if(visible){$("#character-photo-wrap").classList.remove("hidden");setCharacterPhoto($("#character-photo"),assignment.name)}else $("#character-photo-wrap").classList.add("hidden");
+  if(visible){$("#character-photo-wrap").classList.remove("hidden");setCharacterPhoto($("#character-photo"),assignment.name,assignment.imageUrl||"")}else $("#character-photo-wrap").classList.add("hidden");
 }
 
 window.addEventListener("beforeinstallprompt",e=>{e.preventDefault();installPrompt=e});
@@ -1885,12 +1935,12 @@ if("serviceWorker" in navigator){
       const keys=await caches.keys();
       await Promise.all(
         keys
-          .filter(k=>k.startsWith("anime-imposteur-") && k!=="anime-imposteur-v8-6-4")
+          .filter(k=>k.startsWith("anime-imposteur-") && k!=="anime-imposteur-v8-7-0")
           .map(k=>caches.delete(k))
       );
 
       const reg=await navigator.serviceWorker.register(
-        "./service-worker.js?v=8.6.4",
+        "./service-worker.js?v=8.7.0",
         {updateViaCache:"none"}
       );
       await reg.update().catch(()=>{});
