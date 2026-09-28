@@ -1,6 +1,6 @@
 {
-  "name": "Anime Party",
-  "short_name": "Anime Party",
+  "name": "Anime Imposteur",
+  "short_name": "Imposteur",
   "description": "Jeux anime multijoueur et solo : imposteur, devine le personnage et IA.",
   "start_url": "./",
   "scope": "./",
