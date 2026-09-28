@@ -1515,7 +1515,7 @@ function renderVoicePanel(){
   const textMode=discussionMode==="text";
   $("#text-discussion-panel")?.classList.toggle("hidden",!textMode);
   $("#voice-discussion-panel")?.classList.toggle("hidden",textMode);
-  $("[data-discussion-mode]").forEach(b=>b.classList.toggle("active",b.dataset.discussionMode===discussionMode));
+  $$("[data-discussion-mode]").forEach(b=>b.classList.toggle("active",b.dataset.discussionMode===discussionMode));
 
   if(!voiceEngine)return;
   const s=voiceEngine.getState();
@@ -1827,7 +1827,7 @@ $("#next-game-btn").addEventListener("click",()=>startGame().catch(e=>toast("Err
 $("#send-hint-btn").addEventListener("click",()=>sendHint().catch(e=>toast("Erreur",e.message)));
 $("#hint-input").addEventListener("keydown",e=>{if(e.key==="Enter")$("#send-hint-btn").click()});
 $("#send-chat-btn").addEventListener("click",()=>{const t=$("#chat-input").value;$("#chat-input").value="";sendMessage(t).catch(e=>toast("Erreur",e.message))});
-$("[data-discussion-mode]").forEach(b=>b.addEventListener("click",()=>{
+$$("[data-discussion-mode]").forEach(b=>b.addEventListener("click",()=>{
   discussionMode=b.dataset.discussionMode;
   renderVoicePanel();
 }));
