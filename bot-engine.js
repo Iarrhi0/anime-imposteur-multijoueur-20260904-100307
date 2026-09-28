@@ -93,6 +93,11 @@ export function resetBotMemory(){
 }
 
 export function keywordsFor(character){
+  if(character && typeof character==="object"){
+    const custom=Array.isArray(character.keywords)?character.keywords.filter(Boolean):[];
+    if(custom.length)return custom;
+    character=character.name;
+  }
   return KEYWORDS[character] || [
     "Calme","Puissant","Rapide","Connu","Sombre","Combat",
     "Génie","Chef","Secret","Élite","Déterminé","Loyal"
