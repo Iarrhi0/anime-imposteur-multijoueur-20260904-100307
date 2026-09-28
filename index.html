@@ -12,7 +12,7 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icons/icon-192.png">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
-  <link rel="stylesheet" href="style.css?v=9.0.0">
+  <link rel="stylesheet" href="style.css?v=10.0.0">
 </head>
 <body>
   <div id="toast-layer" class="toast-layer"></div>
@@ -24,7 +24,7 @@
         <h1>Anime Imposteur</h1>
         <p>Imposteur • Devine le personnage • IA • multijoueur</p>
       </div>
-      <div class="brand-build">v9.0.0</div><div id="connection-dot" class="connection-dot"></div>
+      <div class="brand-build">v10.0.0</div><div id="connection-dot" class="connection-dot"></div>
     </header>
 
     <div id="fatal-config" class="fatal hidden"></div>
@@ -47,6 +47,11 @@
           <span class="game-mode-icon">🕵️</span>
           <strong>Devine mon personnage</strong>
           <small>Solo ou duel à deux • indices progressifs</small>
+        </button>
+        <button class="game-mode-card" id="open-group-mode-btn" type="button">
+          <span class="game-mode-icon">👥</span>
+          <strong>Devine mon groupe</strong>
+          <small>Akatsuki, cheveux longs, épéistes, mentors…</small>
         </button>
       </div>
 
@@ -146,6 +151,67 @@
       <button id="guess-start-btn" class="btn primary" type="button">Commencer</button>
     </section>
 
+
+    <!-- GUESS GROUP -->
+    <section id="screen-guess-group" class="screen">
+      <div class="room-head card guess-head">
+        <button id="group-back-btn" class="app-back-btn lobby-back-btn" aria-label="Retour">‹</button>
+        <span class="eyebrow">MODE</span>
+        <h2>👥 Devine mon groupe</h2>
+        <p>Groupes officiels et catégories : Akatsuki, cheveux longs, épéistes, mentors, etc.</p>
+      </div>
+
+      <div class="card">
+        <div class="section-title">
+          <div><h3>Type de partie</h3><p>Solo ou duel à deux sur le même téléphone</p></div>
+        </div>
+        <div class="segmented">
+          <button class="segment active" data-group-play="solo" type="button">Solo</button>
+          <button class="segment" data-group-play="duo" type="button">Duel à 2</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="section-title">
+          <div><h3>Difficulté</h3><p>Les indices sont révélés progressivement.</p></div>
+        </div>
+        <div class="segmented three">
+          <button class="segment" data-group-difficulty="easy" type="button">Facile</button>
+          <button class="segment active" data-group-difficulty="normal" type="button">Normal</button>
+          <button class="segment" data-group-difficulty="hard" type="button">Difficile</button>
+        </div>
+      </div>
+
+      <div id="group-player-card" class="card hidden">
+        <span class="eyebrow">À TOI DE JOUER</span>
+        <h3 id="group-player-label">Joueur 1</h3>
+        <p id="group-duel-score"></p>
+      </div>
+
+      <div id="group-game-card" class="card guess-game-card hidden">
+        <div class="guess-portrait-wrap group-symbol-wrap">
+          <div id="group-symbol" class="group-symbol">👥</div>
+        </div>
+        <div class="guess-meta">
+          <span class="eyebrow">GROUPE MYSTÈRE</span>
+          <strong id="group-attempts">0 / 6 essais</strong>
+          <small>Organisation, famille, classe ou trait commun</small>
+        </div>
+        <div id="group-clues" class="guess-clues"></div>
+        <label class="field">
+          <span>Ta réponse</span>
+          <input id="group-input" maxlength="70" autocomplete="off" placeholder="Nom du groupe ou de la catégorie…">
+        </label>
+        <div class="two-actions">
+          <button id="group-submit-btn" class="btn primary" type="button">Valider</button>
+          <button id="group-hint-btn" class="btn secondary" type="button">+ Un indice</button>
+        </div>
+        <div id="group-feedback" class="guess-feedback"></div>
+        <button id="group-next-btn" class="btn ai-btn hidden" type="button">Nouvelle manche</button>
+      </div>
+      <button id="group-start-btn" class="btn primary" type="button">Commencer</button>
+    </section>
+
     <!-- LOBBY -->
     <section id="screen-lobby" class="screen">
       <div class="room-head card">
@@ -169,7 +235,39 @@
         <div id="players-list" class="stack"></div>
       </div>
 
+
+      <div class="card room-voice-card">
+        <div class="section-title">
+          <div>
+            <h3>🎙 Salon vocal</h3>
+            <p data-voice-status>Le vocal reste actif quand vous changez de jeu.</p>
+          </div>
+        </div>
+        <button class="btn primary" data-voice-join type="button">🎙 Rejoindre le vocal</button>
+        <div class="voice-controls hidden" data-voice-controls>
+          <button class="voice-control-btn" data-voice-mute type="button">🔇 Couper le micro</button>
+          <button class="voice-control-btn danger" data-voice-leave type="button">🚪 Quitter le vocal</button>
+        </div>
+        <div class="voice-members" data-voice-members>
+          <div class="voice-empty">Personne n’est encore dans le vocal.</div>
+        </div>
+      </div>
+
       <div id="host-panel" class="hidden">
+        <div class="card party-mode-card">
+          <div class="section-title">
+            <div>
+              <h3>Jeu du salon</h3>
+              <p>Change de jeu sans quitter le salon ni le vocal.</p>
+            </div>
+          </div>
+          <div class="party-mode-grid">
+            <button class="party-mode-option active" data-room-mode="impostor" type="button">🎭<strong>Imposteur</strong></button>
+            <button class="party-mode-option" data-room-mode="guess-group" type="button">👥<strong>Devine groupe</strong></button>
+            <button class="party-mode-option" data-room-mode="vs" type="button">⚔️<strong>VS vocal</strong></button>
+          </div>
+        </div>
+
         <div class="host-actions">
           <button class="btn bot-btn" id="add-bot-btn">🤖 Ajouter une IA</button>
           <button class="btn secondary" id="fill-bots-btn">+ Remplir avec 4 IA</button>
@@ -256,7 +354,7 @@
           </label>
         </div>
 
-        <button class="btn primary" id="start-game-btn">Commencer la partie</button>
+        <button class="btn primary" id="start-game-btn">Lancer le jeu</button>
       </div>
 
       <div id="guest-wait" class="card waiting hidden">
@@ -266,6 +364,82 @@
       </div>
 
       <button class="btn danger-ghost" id="leave-room-btn">Quitter la salle</button>
+    </section>
+
+
+    <!-- PERSISTENT PARTY SESSION -->
+    <section id="screen-party" class="screen">
+      <div class="game-sticky">
+        <div class="game-top">
+          <button id="party-back-btn" class="app-back-btn game-back-btn" aria-label="Retour au salon">‹</button>
+          <div class="game-room-meta">
+            <span class="eyebrow">SALLE <b id="party-room-code">-----</b></span>
+            <div id="party-round-label" class="game-round">Discussion</div>
+          </div>
+          <div class="game-top-actions">
+            <button id="party-change-game-btn" class="leave-game-btn" type="button">Changer de jeu</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card room-voice-card">
+        <div class="section-title">
+          <div><h3>🎙 Discussion vocale</h3><p data-voice-status>Le salon vocal reste ouvert pendant toutes les manches.</p></div>
+        </div>
+        <button class="btn primary" data-voice-join type="button">🎙 Rejoindre le vocal</button>
+        <div class="voice-controls hidden" data-voice-controls>
+          <button class="voice-control-btn" data-voice-mute type="button">🔇 Couper le micro</button>
+          <button class="voice-control-btn danger" data-voice-leave type="button">🚪 Quitter le vocal</button>
+        </div>
+        <div class="voice-members" data-voice-members></div>
+      </div>
+
+      <div id="party-vs-panel" class="card hidden">
+        <span class="eyebrow">VS VOCAL</span>
+        <h2 id="party-vs-question">Qui défendrais-tu ?</h2>
+        <div class="vs-board">
+          <div class="vs-side"><span>A</span><strong id="party-vs-a">A</strong></div>
+          <div class="vs-center">VS</div>
+          <div class="vs-side"><span>B</span><strong id="party-vs-b">B</strong></div>
+        </div>
+        <div class="turn-banner" id="party-speaker-box">
+          <div class="turn-avatar">🎙</div>
+          <div class="turn-copy"><span class="turn-kicker">TOUR DE PAROLE</span><strong id="party-speaker-name">Discussion libre</strong><small>Parlez dans le vocal puis passez au suivant.</small></div>
+        </div>
+        <div id="party-discussion-actions" class="two-actions">
+          <button id="party-next-speaker-btn" class="btn secondary" type="button">Tour suivant</button>
+          <button id="party-open-vote-btn" class="btn primary" type="button">Passer au vote</button>
+        </div>
+        <div id="party-vote-actions" class="hidden">
+          <div class="two-actions">
+            <button class="btn secondary" data-party-vote="A" type="button">Voter A</button>
+            <button class="btn secondary" data-party-vote="B" type="button">Voter B</button>
+          </div>
+          <p id="party-vote-status" class="player-sub"></p>
+          <button id="party-finish-vote-btn" class="btn primary hidden" type="button">Afficher le résultat</button>
+        </div>
+        <div id="party-result-box" class="hidden party-result-box"></div>
+      </div>
+
+      <div id="party-group-panel" class="card hidden">
+        <span class="eyebrow">DEVINE MON GROUPE</span>
+        <h2>Chacun reçoit un groupe secret.</h2>
+        <div id="party-my-group" class="secret-group-box">
+          <small>TON GROUPE</small>
+          <strong>••••••</strong>
+          <p></p>
+        </div>
+        <button id="party-toggle-group-btn" class="btn secondary" type="button">Voir mon groupe</button>
+        <div class="turn-banner">
+          <div class="turn-avatar">🎙</div>
+          <div class="turn-copy"><span class="turn-kicker">DISCUSSION VOCALE</span><strong>Faites deviner votre groupe</strong><small>Exemples : Akatsuki, cheveux longs, épéistes, mentors…</small></div>
+        </div>
+        <div id="party-group-host-actions" class="two-actions">
+          <button id="party-reveal-groups-btn" class="btn secondary" type="button">Révéler les groupes</button>
+          <button id="party-new-group-round-btn" class="btn primary" type="button">Nouvelle manche</button>
+        </div>
+        <div id="party-groups-result" class="hidden party-result-box"></div>
+      </div>
     </section>
 
     <!-- GAME -->
@@ -386,22 +560,22 @@
             <div class="voice-orb">🎙</div>
             <div>
               <strong>Salon vocal de la salle</strong>
-              <small id="voice-status">Rejoins le salon vocal de cette salle.</small>
+              <small id="voice-status" data-voice-status>Rejoins le salon vocal de cette salle.</small>
             </div>
           </div>
 
-          <button id="voice-join-btn" class="btn primary voice-join-btn" type="button">🎙 Rejoindre le vocal</button>
+          <button id="voice-join-btn" class="btn primary voice-join-btn" data-voice-join type="button">🎙 Rejoindre le vocal</button>
 
-          <div id="voice-controls" class="voice-controls hidden">
-            <button id="voice-mute-btn" class="voice-control-btn" type="button">🔇 Couper le micro</button>
-            <button id="voice-leave-btn" class="voice-control-btn danger" type="button">🚪 Quitter le vocal</button>
+          <div id="voice-controls" class="voice-controls hidden" data-voice-controls>
+            <button id="voice-mute-btn" class="voice-control-btn" data-voice-mute type="button">🔇 Couper le micro</button>
+            <button id="voice-leave-btn" class="voice-control-btn danger" data-voice-leave type="button">🚪 Quitter le vocal</button>
           </div>
 
           <div class="voice-list-head">
             <strong>Participants vocaux</strong>
             <small>Maximum 6 joueurs</small>
           </div>
-          <div id="voice-members" class="voice-members">
+          <div id="voice-members" class="voice-members" data-voice-members>
             <div class="voice-empty">Personne n’est encore dans le vocal.</div>
           </div>
 
@@ -505,6 +679,6 @@
     </div>
   </main>
 
-  <script type="module" src="app.js?v=9.0.0"></script>
+  <script type="module" src="app.js?v=10.0.0"></script>
 </body>
 </html>
