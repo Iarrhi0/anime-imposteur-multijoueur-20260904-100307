@@ -922,7 +922,7 @@ async function sendHint(){
 }
 async function sendMessage(text,playerId=currentUser.uid,playerName=null){
   text=String(text||"").trim().slice(0,300);if(!text)return;
-  if(!["playing","voting","postvote"].includes(currentRoomData?.status))return;
+  if(!["playing","voting","postvote","party"].includes(currentRoomData?.status))return;
   await fb.fsMod.addDoc(fb.fsMod.collection(db,"rooms",currentRoom,"messages"),{
     gameNo:currentRoomData.gameNo,playerId,playerName:playerName||participantById(playerId)?.name||"Joueur",
     text,createdMs:now()
