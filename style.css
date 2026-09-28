@@ -1420,3 +1420,142 @@ body{
   line-height:1.45;
 }
 .result-similarity b{color:#eef6ff}
+
+
+/* =========================================================
+   V9.0 — ANIME PARTY MODES
+   ========================================================= */
+.game-mode-grid{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:9px;
+  margin-bottom:10px;
+}
+.game-mode-card{
+  min-height:120px;
+  display:flex;
+  flex-direction:column;
+  align-items:flex-start;
+  justify-content:center;
+  gap:6px;
+  padding:14px;
+  border-radius:16px;
+  border:1px solid #29435e;
+  background:#091625;
+  color:#eef6ff;
+  text-align:left;
+}
+.game-mode-card.active-mode,
+.game-mode-card:active{
+  border-color:#6d4fc2;
+  background:#171631;
+}
+.game-mode-icon{font-size:26px}
+.game-mode-card strong{font-size:12px}
+.game-mode-card small{font-size:9px;line-height:1.35;color:#8fa5ba}
+
+.concept-variant-block{
+  margin:12px 0;
+  padding-top:10px;
+  border-top:1px solid #1e344b;
+}
+.compact-title{margin-bottom:8px}
+.variant-example{
+  display:block;
+  margin-top:7px;
+  color:#8fa5ba;
+  font-size:8.5px;
+  line-height:1.4;
+}
+
+.guess-head h2{
+  margin:7px 0 4px;
+  padding-left:38px;
+}
+.guess-head p{
+  margin:0;
+  padding-left:38px;
+  color:#8fa5ba;
+  font-size:9px;
+}
+.guess-game-card{display:grid;gap:12px}
+.guess-portrait-wrap{
+  position:relative;
+  width:150px;
+  height:190px;
+  margin:0 auto;
+  overflow:hidden;
+  border-radius:18px;
+  border:1px solid #35516e;
+  background:#08131f;
+}
+.guess-character-image{
+  width:100%;
+  height:100%;
+  object-fit:cover;
+  transform:scale(1.08);
+  transition:filter .2s ease;
+}
+.guess-image-mask{
+  position:absolute;
+  inset:0;
+  display:grid;
+  place-items:center;
+  font-size:54px;
+  font-weight:1000;
+  color:rgba(255,255,255,.7);
+  background:rgba(2,8,18,.16);
+  pointer-events:none;
+}
+.guess-meta{
+  text-align:center;
+  display:grid;
+  gap:3px;
+}
+.guess-meta strong{font-size:13px}
+.guess-meta small{font-size:8.5px;color:#8fa5ba}
+.guess-clues{display:grid;gap:7px}
+.guess-clue{
+  display:flex;
+  align-items:center;
+  gap:9px;
+  padding:9px 10px;
+  border-radius:12px;
+  border:1px solid #223c56;
+  background:#091625;
+}
+.guess-clue span{
+  width:26px;
+  height:26px;
+  display:grid;
+  place-items:center;
+  flex:0 0 26px;
+  border-radius:50%;
+  background:#241b46;
+  color:#d9cbff;
+  font-size:9px;
+  font-weight:1000;
+}
+.guess-clue strong{font-size:9.5px;line-height:1.35}
+.guess-feedback{
+  min-height:28px;
+  padding:7px 9px;
+  border-radius:10px;
+  background:#07111f;
+  color:#c8d6e4;
+  font-size:9px;
+  line-height:1.4;
+}
+#guess-player-card{
+  text-align:center;
+}
+#guess-player-card h3{
+  margin:5px 0 3px;
+}
+#guess-duel-score{
+  color:#8fa5ba;
+  font-size:9px;
+}
+@media(max-width:360px){
+  .game-mode-grid{grid-template-columns:1fr}
+}
