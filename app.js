@@ -458,7 +458,7 @@ function subscribeGameData(gameNo){
   while(gameUnsubs.length){try{gameUnsubs.pop()()}catch{}}
   hints=[];messages=[];voteApprovals=[];voteStatuses=[];lastHintIds.clear();lastMessageIds.clear();
   collectionReady={hints:false,messages:false,approvals:false,voteStatus:false};
-  if(!gameNo)return;
+  gameNo=Number(gameNo||0);
   const {collection,onSnapshot,query,where}=fb.fsMod;
 
   // V8.4.3 — synchronisation des indices compatible avec les règles Firestore.
@@ -577,7 +577,6 @@ function subscribeGameData(gameNo){
       }
     });
 
-    partyVotes=all.filter(m=>m.kind==="party-vote");
     const next=all.filter(m=>m.kind!=="voice-signal"&&m.kind!=="party-vote");
     const fresh=[];
     if(collectionReady.messages){
