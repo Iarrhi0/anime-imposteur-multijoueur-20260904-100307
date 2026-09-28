@@ -2373,6 +2373,131 @@ async function advanceGuessRound(){
   await startGuessRound();
 }
 
+function openGuessGroupMode(){
+  groupChallenge=null;
+  groupDuelRound=0;
+  groupDuelScores=[null,null];
+  $("#group-game-card")?.classList.add("hidden");
+  $("#group-player-card")?.classList.add("hidden");
+  $("#group-start-btn")?.classList.remove("hidden");
+  $("#group-start-btn").textContent="Commencer";
+  $("#group-feedback").textContent="";
+  show("guess-group");
+}
+
+function groupScoreValue(challenge){
+  if(!challenge)return 99;
+  return challenge.solved?challenge.attempts:challenge.maxAttempts+2;
+}
+
+function renderGroupDuelStatus(){
+  const duo=groupSettings.play==="duo";
+  $("#group-player-card")?.classList.toggle("hidden",!duo);
+  if(!duo)return;
+
+  patchText("#group-player-label",`Joueur ${groupDuelRound+1}`);
+  const s1=groupDuelScores[0]==null?"—":groupDuelScores[0];
+  const s2=groupDuelScores[1]==null?"—":groupDuelScores[1];
+  patchText("#group-duel-score",`Score : J1 ${s1} • J2 ${s2}`);
+}
+
+function renderGuessGroup(){
+  const ch=groupChallenge;
+  if(!ch)return;
+
+  $("#group-game-card")?.classList.remove("hidden");
+  $("#group-start-btn")?.classList.add("hidden");
+
+  patchHTML(
+    "#group-clues",
+    ch.clues.slice(0,ch.revealed)
+      .map((x,i)=>`<div class="guess-clue"><span>${i+1}</span><strong>${esc(x)}</strong></div>`)
+      .join("")
+  );
+
+  patchText("#group-attempts",`${ch.attempts} / ${ch.maxAttempts} essais`);
+  patchText("#group-symbol",ch.finished?"✅":"👥");
+
+  $("#group-input").disabled=ch.finished;
+  $("#group-submit-btn").disabled=ch.finished;
+  $("#group-hint-btn").disabled=ch.finished||ch.revealed>=ch.clues.length;
+
+  if(ch.finished){
+    const answer=`${ch.group.name}${ch.group.anime?" — "+ch.group.anime:""}`;
+    patchText(
+      "#group-feedback",
+      ch.solved
+        ?`✅ Trouvé en ${ch.attempts} essai${ch.attempts>1?"s":""} : ${answer}`
+        :`❌ Réponse : ${answer}`
+    );
+
+    if(groupSettings.play==="duo"){
+      groupDuelScores[groupDuelRound]=groupScoreValue(ch);
+      if(groupDuelRound===0){
+        $("#group-next-btn").textContent="Passer au Joueur 2";
+      }else{
+        const a=groupDuelScores[0],b=groupDuelScores[1];
+        const result=a===b?"Égalité !":a<b?"Joueur 1 gagne !":"Joueur 2 gagne !";
+        patchText("#group-feedback",`${$("#group-feedback").textContent} • ${result}`);
+        $("#group-next-btn").textContent="Rejouer le duel";
+      }
+      renderGroupDuelStatus();
+    }else{
+      $("#group-next-btn").textContent="Nouvelle manche";
+    }
+
+    $("#group-next-btn")?.classList.remove("hidden");
+  }else{
+    $("#group-next-btn")?.classList.add("hidden");
+  }
+}
+
+function startGroupRoundLocal(){
+  groupChallenge=newGuessGroupChallenge({difficulty:groupSettings.difficulty});
+  $("#group-input").value="";
+  $("#group-feedback").textContent="";
+  renderGroupDuelStatus();
+  renderGuessGroup();
+  $("#group-input")?.focus();
+}
+
+function submitGuessGroupLocal(){
+  if(!groupChallenge)return;
+  const result=submitGroupGuess(groupChallenge,$("#group-input").value);
+  if(result.empty)return toast("Réponse","Écris le nom du groupe ou de la catégorie.");
+  if(!result.correct&&!result.finished){
+    patchText("#group-feedback","Pas encore. Un nouvel indice vient d’être révélé.");
+    $("#group-input").value="";
+  }
+  renderGuessGroup();
+}
+
+function advanceGroupRoundLocal(){
+  if(groupSettings.play==="duo"){
+    if(groupDuelRound===0){
+      groupDuelRound=1;
+      groupChallenge=null;
+      $("#group-game-card")?.classList.add("hidden");
+      $("#group-start-btn")?.classList.remove("hidden");
+      $("#group-start-btn").textContent="Commencer le tour du Joueur 2";
+      renderGroupDuelStatus();
+      return;
+    }
+
+    groupDuelRound=0;
+    groupDuelScores=[null,null];
+    groupChallenge=null;
+    $("#group-game-card")?.classList.add("hidden");
+    $("#group-start-btn")?.classList.remove("hidden");
+    $("#group-start-btn").textContent="Recommencer le duel";
+    renderGroupDuelStatus();
+    return;
+  }
+
+  groupChallenge=null;
+  startGroupRoundLocal();
+}
+
 function armAppHistory(){
   if(historyGuardReady)return;
   historyGuardReady=true;
