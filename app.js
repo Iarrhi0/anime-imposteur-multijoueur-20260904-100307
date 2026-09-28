@@ -752,7 +752,7 @@ async function startGame(){
     if(p.bot){botAssignments[p.id]={...char,gameNo};return fb.fsMod.setDoc(fb.fsMod.doc(db,"rooms",currentRoom,"botAssignments",p.id),{...char,gameNo})}
     return fb.fsMod.setDoc(fb.fsMod.doc(db,"rooms",currentRoom,"assignments",p.id),{...char,gameNo});
   }));
-  await fb.fsMod.setDoc(fb.fsMod.doc(db,"rooms",currentRoom,"secrets","current"),{gameNo,impostorId:impostor.id,majority,outsider,pairScore:pair.score||0});
+  await fb.fsMod.setDoc(fb.fsMod.doc(db,"rooms",currentRoom,"secrets","current"),{gameNo,impostorId:impostor.id,majority,outsider,pairScore:pair.score||0,sharedDetails:pair.sharedDetails||[]});
   await fb.fsMod.updateDoc(fb.fsMod.doc(db,"rooms",currentRoom),{
     status:"playing",gameNo,hintRound:1,turnIndex:0,order,roster,activeIds:order,
     hiddenHints:$("#hidden-hints").checked,reconsiderSeconds:Number($("#reconsider-seconds").value||15),
@@ -802,7 +802,7 @@ async function hostProcessTurn(){
     if(!a){const snap=await fb.fsMod.getDoc(fb.fsMod.doc(db,"rooms",currentRoom,"botAssignments",id));if(snap.exists()){a=snap.data();botAssignments[id]=a}}
     if(!a)return scheduleHostTick(400);
     const b=bots.find(x=>x.id===id);
-    const word=chooseAdaptiveBotHint(a.name,currentGameHints().map(h=>h.word),currentGameHints(),b?.name||p.name,b?.difficulty||"Normal");
+    const word=chooseAdaptiveBotHint(a,currentGameHints().map(h=>h.word),currentGameHints(),b?.name||p.name,b?.difficulty||"Normal");
     await fb.fsMod.setDoc(fb.fsMod.doc(db,"rooms",currentRoom,"hints",`g${currentRoomData.gameNo}_r${currentRoomData.hintRound}_${id}`),{
       gameNo:currentRoomData.gameNo,round:currentRoomData.hintRound,playerId:id,playerName:p.name,word,
       revealed:!currentRoomData.hiddenHints,orderIndex:currentRoomData.turnIndex,createdMs:now()
@@ -867,7 +867,7 @@ async function hostProcessProposal(){
   for(const b of bots.filter(x=>voters.includes(x.id))){
     if(voteApprovals.some(a=>a.token===p.token&&a.playerId===b.id))continue;
     const a=botAssignments[b.id];if(!a)continue;
-    const yes=botVoteApproval(a.name,currentGameHints(),messages,b.name,b.difficulty);
+    const yes=botVoteApproval(a,currentGameHints(),messages,b.name,b.difficulty);
     await fb.fsMod.setDoc(fb.fsMod.doc(db,"rooms",currentRoom,"voteApprovals",`${p.token}_${b.id}`),{
       gameNo:currentRoomData.gameNo,token:p.token,playerId:b.id,playerName:b.name,decision:yes?"yes":"no",createdMs:now()
     });
@@ -1085,7 +1085,7 @@ async function guaranteeBotVotes(){
 
         let target=chooseBotVote(
           b.id,
-          a?.name||"Personnage inconnu",
+          a||{name:"Personnage inconnu"},
           candidates,
           currentGameHints(),
           messages,
@@ -1409,7 +1409,7 @@ async function resolveVote(){
   }
   batch.update(fb.fsMod.doc(db,"rooms",currentRoom),{
     status:"postvote",voteStage:null,reconsiderEndsAt:null,
-    result:{winner:normalsWin?"normal":"impostor",impostorId:secret.impostorId,eliminatedId:eliminated,majority:secret.majority,outsider:secret.outsider}
+    result:{winner:normalsWin?"normal":"impostor",impostorId:secret.impostorId,eliminatedId:eliminated,majority:secret.majority,outsider:secret.outsider,pairScore:secret.pairScore||0,sharedDetails:secret.sharedDetails||[]}
   });
   await batch.commit();
 }
@@ -1431,7 +1431,7 @@ async function processBotQueue(){
       const b=pool[Math.floor(Math.random()*pool.length)],a=botAssignments[b.id];
       await sleep(botReplyDelay(b.name,msg,b.difficulty));
       if(isHost&&["playing","voting","postvote"].includes(currentRoomData?.status)){
-        const text=buildBotDiscussion(b.name,a.name,currentGameHints(),messages,activeParticipants(),{
+        const text=buildBotDiscussion(b.name,a,currentGameHints(),messages,activeParticipants(),{
           phase:currentRoomData.status,tranche:currentRoomData.hintRound||1,difficulty:b.difficulty
         });
         if(text)await sendMessage(text,b.id,b.name);
@@ -1695,7 +1695,17 @@ async function renderResult(){
   patchText("#result-majority-name",r.majority.name);patchText("#result-impostor-name",r.outsider.name);$("#result-images").classList.remove("hidden");
   setCharacterPhoto($("#result-majority-photo"),r.majority.name,r.majority.imageUrl||"");setCharacterPhoto($("#result-impostor-photo"),r.outsider.name,r.outsider.imageUrl||"");
   const imp=participantById(r.impostorId),elim=participantById(r.eliminatedId);
-  $("#result-text").innerHTML=normals?`L’imposteur était <b>${esc(imp?.name||"")}</b>.`:`Le groupe a éliminé <b>${esc(elim?.name||"")}</b>.<br><br>L’imposteur était <b>${esc(imp?.name||"")}</b>.`;
+  const base=normals
+    ?`L’imposteur était <b>${esc(imp?.name||"")}</b>.`
+    :`Le groupe a éliminé <b>${esc(elim?.name||"")}</b>.<br><br>L’imposteur était <b>${esc(imp?.name||"")}</b>.`;
+  const common=(r.sharedDetails||[])
+    .slice(0,4)
+    .map(x=>String(x).replace(/^[^:]+:\s*/,""))
+    .filter(Boolean);
+  const why=common.length
+    ?`<br><br><span class="result-similarity"><b>Points communs du duo :</b> ${common.map(esc).join(" • ")}</span>`
+    :"";
+  $("#result-text").innerHTML=base+why;
 }
 function renderScores(){patchHTML("#score-list",participants().sort((a,b)=>(b.score||0)-(a.score||0)).map(p=>`<div class="score-row"><span>${esc(p.name)}</span><b>${p.score||0}</b></div>`).join(""))}
 function renderBadges(){patchText("#hints-badge",unreadHints);$("#hints-badge").classList.toggle("hidden",!unreadHints);patchText("#chat-badge",unreadChat);$("#chat-badge").classList.toggle("hidden",!unreadChat)}
