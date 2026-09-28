@@ -8,7 +8,7 @@
       android:allowBackup="true"
       android:icon="@drawable/app_icon"
       android:roundIcon="@drawable/app_icon"
-      android:label="Anime Party"
+      android:label="Anime Imposteur"
       android:theme="@style/Theme.AnimeImposteur"
       android:usesCleartextTraffic="false"
       android:hardwareAccelerated="true">
