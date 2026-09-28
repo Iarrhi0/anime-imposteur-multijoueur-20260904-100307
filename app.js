@@ -1855,6 +1855,7 @@ function renderAll(){
   renderGamePlayers();
   renderHints();
   renderMessages();
+  renderPartyChat();
   renderVoicePanel();
   renderProposal();
   renderVoting();
@@ -1943,7 +1944,7 @@ function renderPartySession(){
   $("#party-change-game-btn")?.classList.toggle("hidden",!isHost);
   patchText(
     "#party-round-label",
-    `${mode==="vs"?"VS vocal":"Devine mon groupe"} • Manche ${session.round||1}`
+    `${mode==="vs"?"VS vocal":mode==="guess-character"?"Devine mon personnage":"Devine mon groupe"} • Manche ${session.round||1}`
   );
 
   $("#party-vs-panel")?.classList.toggle("hidden",mode!=="vs");
@@ -2110,6 +2111,20 @@ async function joinCurrentVoice(){
     knownPlayers:players
   });
   voiceEngine.updateMembers(players);
+}
+
+function renderPartyChat(){
+  const list=$("#party-chat-list");
+  if(!list)return;
+
+  const data=messages.slice(-80);
+  const key=data.map(m=>m.id).join(",");
+  if(list.__key===key)return;
+
+  const near=list.scrollHeight-list.scrollTop-list.clientHeight<90;
+  list.innerHTML=data.map(m=>`<div class="message ${m.playerId===currentUser?.uid?"me":""}"><div class="who">${esc(m.playerName)}</div><div class="body">${esc(m.text)}</div></div>`).join("");
+  list.__key=key;
+  if(near||!list.__done){list.scrollTop=list.scrollHeight;list.__done=true}
 }
 
 function renderVoicePanel(){
@@ -2797,6 +2812,14 @@ $("#guess-hint-btn")?.addEventListener("click",()=>{
 $("#guess-next-btn")?.addEventListener("click",()=>advanceGuessRound());
 $("#guess-input")?.addEventListener("keydown",e=>{if(e.key==="Enter")submitGuessCharacter()});
 
+$("#party-chat-send-btn")?.addEventListener("click",()=>{
+  const input=$("#party-chat-input");
+  const t=input?.value||"";
+  if(input)input.value="";
+  sendMessage(t).catch(e=>toast("Chat",e.message));
+});
+$("#party-chat-input")?.addEventListener("keydown",e=>{if(e.key==="Enter")$("#party-chat-send-btn")?.click()});
+
 $("#open-group-mode-btn")?.addEventListener("click",openGuessGroupMode);
 $("#group-back-btn")?.addEventListener("click",()=>show("home"));
 $("#group-start-btn")?.addEventListener("click",startGroupRoundLocal);
@@ -2833,7 +2856,7 @@ $("#party-toggle-group-btn")?.addEventListener("click",()=>{
   if(!box)return;
   const visible=box.dataset.visible==="1";
   box.dataset.visible=visible?"0":"1";
-  $("#party-toggle-group-btn").textContent=visible?"Voir mon groupe":"Cacher mon groupe";
+  $("#party-toggle-group-btn").textContent=visible?"Voir mon secret":"Cacher mon secret";
   renderPartySession();
 });
 $("#party-reveal-groups-btn")?.addEventListener("click",()=>revealPartyGroups().catch(e=>toast("Groupes",e.message)));
