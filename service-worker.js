@@ -1,16 +1,16 @@
-const CACHE="anime-imposteur-v10-0-1";
+const CACHE="anime-imposteur-v10-1-0";
 const SHELL=[
-  "./style.css?v=10.0.1",
-  "./app.js?v=10.0.1",
-  "./ai-engine.js?v=10.0.1",
-  "./online-character-engine.js?v=10.0.1",
-  "./concept-engine.js?v=10.0.1",
-  "./guess-character-engine.js?v=10.0.1",
-  "./group-engine.js?v=10.0.1",
-  "./vs-engine.js?v=10.0.1",
-  "./bot-engine.js?v=10.0.1",
-  "./voice-engine.js?v=10.0.1",
-  "./voice-config.js?v=10.0.1",
+  "./style.css?v=10.1.0",
+  "./app.js?v=10.1.0",
+  "./ai-engine.js?v=10.1.0",
+  "./online-character-engine.js?v=10.1.0",
+  "./concept-engine.js?v=10.1.0",
+  "./guess-character-engine.js?v=10.1.0",
+  "./group-engine.js?v=10.1.0",
+  "./vs-engine.js?v=10.1.0",
+  "./bot-engine.js?v=10.1.0",
+  "./voice-engine.js?v=10.1.0",
+  "./voice-config.js?v=10.1.0",
   "./manifest.webmanifest",
   "./icons/icon-192.png",
   "./icons/icon-512.png"

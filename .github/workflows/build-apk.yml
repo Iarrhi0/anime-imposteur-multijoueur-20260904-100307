@@ -32,11 +32,11 @@ jobs:
         run: gradle -p android/android :app:assembleDebug
 
       - name: Rename APK
-        run: cp android/android/app/build/outputs/apk/debug/app-debug.apk Anime-Imposteur-10.0.1.apk
+        run: cp android/android/app/build/outputs/apk/debug/app-debug.apk Anime-Imposteur-10.1.0.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Anime-Imposteur-10.0.1
-          path: Anime-Imposteur-10.0.1.apk
+          name: Anime-Imposteur-10.1.0
+          path: Anime-Imposteur-10.1.0.apk
           if-no-files-found: error
