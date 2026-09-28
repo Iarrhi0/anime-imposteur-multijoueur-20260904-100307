@@ -1,6 +1,6 @@
 import { firebaseConfig } from "./firebase-config.js";
 import { VoiceEngine } from "./voice-engine.js?v=8.7.0";
-import { animeDB, chooseIntelligentPair, getAiStats } from "./ai-engine.js?v=8.7.0";
+import { animeDB, chooseIntelligentPair } from "./ai-engine.js?v=8.7.0";
 import { chooseOnlineIntelligentPair, warmOnlineCharacterPool, getOnlineEngineInfo } from "./online-character-engine.js?v=8.7.0";
 import {
   chooseAdaptiveBotHint, chooseBotVote, botVoteApproval,
