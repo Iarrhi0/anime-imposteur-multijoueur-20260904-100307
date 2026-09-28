@@ -1,10 +1,10 @@
 import { firebaseConfig } from "./firebase-config.js";
-import { VoiceEngine } from "./voice-engine.js?v=8.6.0";
-import { animeDB, chooseIntelligentPair, getAiStats } from "./ai-engine.js?v=8.6.0";
+import { VoiceEngine } from "./voice-engine.js?v=8.6.2";
+import { animeDB, chooseIntelligentPair, getAiStats } from "./ai-engine.js?v=8.6.2";
 import {
   chooseAdaptiveBotHint, chooseBotVote, botVoteApproval,
   buildBotDiscussion, shouldBotReply, botReplyDelay, resetBotMemory
-} from "./bot-engine.js?v=8.6.0";
+} from "./bot-engine.js?v=8.6.2";
 
 const $=s=>document.querySelector(s);
 const $$=s=>[...document.querySelectorAll(s)];
@@ -491,7 +491,12 @@ function subscribeGameData(gameNo){
   gameUnsubs.push(onSnapshot(query(collection(db,"rooms",currentRoom,"messages"),where("gameNo","==",gameNo)),snap=>{
     const all=snap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(a.createdMs||0)-(b.createdMs||0));
     const signals=all.filter(m=>m.kind==="voice-signal");
-    signals.forEach(m=>voiceEngine?.consumeSignal(m));
+    signals.forEach(m=>{
+      voiceEngine?.consumeSignal(m);
+      if(isHost && now()-Number(m.createdMs||0)>120000){
+        fb.fsMod.deleteDoc(fb.fsMod.doc(db,"rooms",currentRoom,"messages",m.id)).catch(()=>{});
+      }
+    });
 
     const next=all.filter(m=>m.kind!=="voice-signal");
     const fresh=[];
@@ -1510,7 +1515,7 @@ function renderVoicePanel(){
   const textMode=discussionMode==="text";
   $("#text-discussion-panel")?.classList.toggle("hidden",!textMode);
   $("#voice-discussion-panel")?.classList.toggle("hidden",textMode);
-  $("[data-discussion-mode]").forEach(b=>b.classList.toggle("active",b.dataset.discussionMode===discussionMode));
+  $$("[data-discussion-mode]").forEach(b=>b.classList.toggle("active",b.dataset.discussionMode===discussionMode));
 
   if(!voiceEngine)return;
   const s=voiceEngine.getState();
@@ -1822,7 +1827,7 @@ $("#next-game-btn").addEventListener("click",()=>startGame().catch(e=>toast("Err
 $("#send-hint-btn").addEventListener("click",()=>sendHint().catch(e=>toast("Erreur",e.message)));
 $("#hint-input").addEventListener("keydown",e=>{if(e.key==="Enter")$("#send-hint-btn").click()});
 $("#send-chat-btn").addEventListener("click",()=>{const t=$("#chat-input").value;$("#chat-input").value="";sendMessage(t).catch(e=>toast("Erreur",e.message))});
-$("[data-discussion-mode]").forEach(b=>b.addEventListener("click",()=>{
+$$("[data-discussion-mode]").forEach(b=>b.addEventListener("click",()=>{
   discussionMode=b.dataset.discussionMode;
   renderVoicePanel();
 }));
@@ -1880,12 +1885,12 @@ if("serviceWorker" in navigator){
       const keys=await caches.keys();
       await Promise.all(
         keys
-          .filter(k=>k.startsWith("anime-imposteur-") && k!=="anime-imposteur-v8-6-0")
+          .filter(k=>k.startsWith("anime-imposteur-") && k!=="anime-imposteur-v8-6-2")
           .map(k=>caches.delete(k))
       );
 
       const reg=await navigator.serviceWorker.register(
-        "./service-worker.js?v=8.6.0",
+        "./service-worker.js?v=8.6.2",
         {updateViaCache:"none"}
       );
       await reg.update().catch(()=>{});
