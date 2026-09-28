@@ -1921,6 +1921,7 @@ function renderPartySession(){
 
   const session=currentRoomData.partySession||{};
   const mode=session.mode||"vs";
+  $("#party-change-game-btn")?.classList.toggle("hidden",!isHost);
   patchText("#party-room-code",currentRoom||"-----");
   $("#party-change-game-btn")?.classList.toggle("hidden",!isHost);
   patchText(
