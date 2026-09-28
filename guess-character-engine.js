@@ -1,5 +1,5 @@
-import { getOnlineCharacterPool } from "./online-character-engine.js?v=10.0.0";
-import { characters as localCharacters } from "./ai-engine.js?v=10.0.0";
+import { getOnlineCharacterPool } from "./online-character-engine.js?v=10.1.0";
+import { characters as localCharacters } from "./ai-engine.js?v=10.1.0";
 
 function norm(v){
   return String(v||"")
