@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { signal } from '@preact/signals';
 import { TopBar } from './TopBar';
-import { go, showToast, type Controller } from './state';
+import { go, onBack, showToast, type Controller } from './state';
 import { settings } from './settings';
 import { Avatar, Btn, Card, Section } from '../ui/components';
 import { Chat } from './Chat';
@@ -149,13 +149,15 @@ function Room({ rc, voice }: { rc: RoomClient; voice: VoiceMesh }) {
   }, [room?.status, room?.gameNo, isHost]);
 
   useEffect(() => () => ctrlRef.current?.stop(), []);
+  const quitRef = useRef<() => void>(() => {});
+  useEffect(() => onBack(() => quitRef.current()), []);
   // l'audio se connecte automatiquement en entrant dans le salon
   useEffect(() => {
     if (!voice.on.value) void voice.join();
   }, []);
 
   const quit = async (confirmFirst = true) => {
-    if (confirmFirst && !confirm(isHost ? 'Fermer le salon pour tout le monde ?' : 'Quitter le salon ?')) return;
+    if (confirmFirst && !confirm(isHost ? 'Êtes-vous sûr de quitter ? Le salon sera fermé pour tout le monde.' : 'Êtes-vous sûr de quitter le salon ?')) return;
     ctrlRef.current?.stop();
     await voice.leave().catch(() => {});
     await rc.leave().catch(() => {});
@@ -163,6 +165,7 @@ function Room({ rc, voice }: { rc: RoomClient; voice: VoiceMesh }) {
     go({ name: 'home' });
   };
 
+  quitRef.current = () => void quit();
   if (!room) {
     return (
       <div>

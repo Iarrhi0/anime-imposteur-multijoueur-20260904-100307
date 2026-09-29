@@ -5,7 +5,7 @@ import type { BaseView, ChatMsg, Player } from '../core/types';
 import { Avatar, Btn, Confetti } from '../ui/components';
 import { Chat } from './Chat';
 import { settings } from './settings';
-import { sessionScores, showToast, type Controller } from './state';
+import { onBack, sessionScores, showToast, type Controller } from './state';
 import { personality } from '../ai/personalities';
 import { speak, speakAs, stopSpeaking } from '../ai/speech';
 import { sfx } from '../ui/sounds';
@@ -33,6 +33,8 @@ export function GameScreen({ ctrl, onLeave, onReplay, onChangeGame, voice, speak
   const spoken = useRef(new Set<string>());
   const lastPhase = useRef<string>('');
   const recorded = useRef(false);
+  const leaveRef = useRef<() => void>(() => {});
+  useEffect(() => onBack(() => leaveRef.current()), []);
 
   useEffect(() => {
     const un = ctrl.subscribe(() => force((n) => n + 1));
@@ -139,8 +141,9 @@ export function GameScreen({ ctrl, onLeave, onReplay, onChangeGame, voice, speak
   const muted = !!viewer && Array.isArray((view as any).muted) && (view as any).muted.includes(viewer);
 
   const leave = () => {
-    if (view.phase === 'end' || confirm('Quitter la partie en cours ?')) onLeave();
+    if (view.phase === 'end' || confirm('Êtes-vous sûr de vouloir quitter la partie ?')) onLeave();
   };
+  leaveRef.current = leave;
 
   return (
     <div>

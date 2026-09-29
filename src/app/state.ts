@@ -30,7 +30,41 @@ export function showToast(msg: string, ms = 2800) {
 
 export function go(r: Route) {
   route.value = r;
+  try {
+    history.pushState({ r }, '');
+  } catch {
+    /* ignore */
+  }
   window.scrollTo?.(0, 0);
+}
+
+// Bouton retour (Android / navigateur) : on revient à l'écran précédent.
+// Un écran de partie ou de salon peut intercepter le retour pour demander confirmation.
+const backStack: (() => void)[] = [];
+export function onBack(fn: () => void): () => void {
+  backStack.push(fn);
+  return () => {
+    const i = backStack.lastIndexOf(fn);
+    if (i >= 0) backStack.splice(i, 1);
+  };
+}
+if (typeof window !== 'undefined') {
+  history.replaceState({ exit: true }, '');
+  history.pushState({ r: { name: 'home' } }, '');
+  window.addEventListener('popstate', (e) => {
+    const handler = backStack[backStack.length - 1];
+    if (handler) {
+      history.pushState({ r: route.value }, '');
+      handler();
+      return;
+    }
+    if (e.state?.exit) {
+      if (confirm('Quitter l’application ?')) history.back();
+      else history.pushState({ r: { name: 'home' } }, '');
+      return;
+    }
+    route.value = (e.state?.r as Route) ?? { name: 'home' };
+  });
 }
 
 // ---------- Contrôleur de partie ----------

@@ -10,7 +10,7 @@ export type Role = 'civil' | 'undercover' | 'mrwhite' | 'imposteur' | 'teamA' | 
 export const BAD_ROLES: Role[] = ['undercover', 'mrwhite', 'imposteur'];
 
 export const ROLE_LABEL: Record<Role, string> = {
-  civil: 'Civil',
+  civil: 'Pas l’imposteur',
   undercover: 'Undercover',
   mrwhite: 'Mr. White',
   imposteur: 'Imposteur',
@@ -496,7 +496,8 @@ function resolveVote(cfg: DeductionConfig, s: DState, ctx: RuntimeCtx) {
   else {
     eliminated = top[0];
     const sec = s.secrets[eliminated];
-    text = `${name(ctx, eliminated)} est éliminé${s.opts.revealRole !== false ? ` : c’était ${article(sec.role)} !` : '.'}`;
+    const n = name(ctx, eliminated);
+    text = s.opts.revealRole === false ? `${n} est éliminé.` : BAD_ROLES.includes(sec.role) ? `🎯 ${n} était bien ${article(sec.role)} !` : `😬 ${n} n’était pas l’imposteur…`;
   }
   const res: VoteResult = { tally, eliminated, tie, text };
   if (eliminated && s.opts.revealRole !== false) {

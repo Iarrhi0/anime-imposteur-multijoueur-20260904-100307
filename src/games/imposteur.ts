@@ -193,3 +193,7 @@ export const imposteur = deductionModule(
     lastChanceRoles: ['mrwhite', 'imposteur']
   }
 );
+
+// Variantes affichées (les autres restent accessibles dans « Plus d'options »).
+const KEEP = ['classique', 'undercover', 'aveugle', 'mrwhite', 'multi', 'equipes', 'piege', 'twists'];
+imposteur.presets = imposteur.presets!.filter((p) => KEEP.includes(p.id));

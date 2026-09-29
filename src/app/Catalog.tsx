@@ -33,22 +33,6 @@ export function Catalog({ mode, onPick }: { mode: Mode; onPick?: (gameId: string
                   </button>
                 ))}
               </div>
-              {games
-                .filter((g) => g.presets && g.presets.length > 1)
-                .map((g) => (
-                  <div style={{ marginTop: 10 }}>
-                    <div class="muted small" style={{ marginBottom: 6 }}>
-                      Variantes de {g.name} :
-                    </div>
-                    <div class="chips-select">
-                      {g.presets!.map((p) => (
-                        <button class="chip-sel" onClick={() => pick(g.id, p.id)}>
-                          {p.emoji} {p.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                ))}
             </div>
           );
         })}
