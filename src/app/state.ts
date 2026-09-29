@@ -4,7 +4,7 @@ import type { BaseView, ChatMsg, GameAction, GameModule, GameOptions, Player } f
 import { GameHost } from '../core/host';
 import { uid } from '../core/rng';
 
-export type Mode = 'solo' | 'local' | 'online';
+export type Mode = 'solo' | 'local' | 'online' | 'vs';
 
 export type Route =
   | { name: 'home' }

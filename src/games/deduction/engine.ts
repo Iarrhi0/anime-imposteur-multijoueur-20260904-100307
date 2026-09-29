@@ -167,7 +167,7 @@ export interface DView extends BaseView {
 // ---------- Options communes ----------
 
 export const COMMON_OPTIONS: OptionDef[] = [
-  { key: 'cluesRounds', label: 'Tours d’indices avant le débat', type: 'number', min: 1, max: 3, default: 1 },
+  { key: 'cluesRounds', label: 'Tours d’indices (écrits) avant le débat', type: 'number', min: 1, max: 5, default: 2 },
   { key: 'clueSec', label: 'Temps par indice (s)', type: 'number', min: 15, max: 120, step: 5, default: 40 },
   { key: 'discussionSec', label: 'Temps de débat (s)', type: 'number', min: 20, max: 300, step: 10, default: 90 },
   { key: 'voteSec', label: 'Temps de vote (s)', type: 'number', min: 15, max: 120, step: 5, default: 40, advanced: true },

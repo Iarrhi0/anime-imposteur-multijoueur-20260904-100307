@@ -3,7 +3,7 @@ import { FAMILIES, GAMES } from '../games';
 import { go, type Mode } from './state';
 import { TopBar } from './TopBar';
 
-const MODE_LABEL: Record<Mode, string> = { solo: '🤖 Solo contre des IA', local: '📱 Un seul téléphone', online: '🌐 En ligne' };
+const MODE_LABEL: Record<Mode, string> = { solo: '🤖 Solo contre des IA', local: '📱 Un seul téléphone', online: '🌐 En ligne', vs: '⚔️ Mode VS (à deux)' };
 
 export function Catalog({ mode, onPick }: { mode: Mode; onPick?: (gameId: string, preset?: string) => void }) {
   const pick = onPick ?? ((gameId: string, preset?: string) => go({ name: 'setup', mode, gameId, preset }));
@@ -12,7 +12,7 @@ export function Catalog({ mode, onPick }: { mode: Mode; onPick?: (gameId: string
       {!onPick && <TopBar title={MODE_LABEL[mode]} back={() => go({ name: 'home' })} />}
       <div class={onPick ? '' : 'screen'}>
         {FAMILIES.map((f) => {
-          const games = GAMES.filter((g) => g.family === f.id);
+          const games = GAMES.filter((g) => g.family === f.id && (mode !== 'vs' || g.minPlayers <= 2));
           if (!games.length) return null;
           return (
             <div class="family">

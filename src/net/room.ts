@@ -28,6 +28,8 @@ export interface Member {
   seen: number;
   joinedAt: number;
   voice?: boolean;
+  /** ✋ veut parler, 🤫 demande le silence. */
+  hand?: 'parler' | 'silence' | null;
 }
 
 export interface Profile {
@@ -151,6 +153,10 @@ export class RoomClient {
   async sendAction(a: GameAction) {
     const { fs } = this.f;
     await fs.addDoc(this.col('actions'), { uid: this.uid, a: JSON.parse(JSON.stringify(a)), ts: Date.now() });
+  }
+
+  async setHand(hand: 'parler' | 'silence' | null) {
+    await this.f.fs.updateDoc(this.ref('members', this.uid), { hand }).catch(() => {});
   }
 
   async setVoice(on: boolean) {

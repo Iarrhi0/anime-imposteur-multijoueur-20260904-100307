@@ -191,7 +191,7 @@ function Room({ rc, voice }: { rc: RoomClient; voice: VoiceMesh }) {
     await rc.update({ status: 'lobby' });
   };
 
-  const voiceBar = <VoiceBar voice={voice} />;
+  const voiceBar = <VoiceBar voice={voice} rc={rc} />;
 
   if (ctrl) {
     return (
@@ -263,7 +263,9 @@ function Room({ rc, voice }: { rc: RoomClient; voice: VoiceMesh }) {
                     <b class="grow" style={{ color: m.color }}>
                       {m.name} {m.uid === room.host ? '👑' : ''} {m.uid === rc.uid ? '(toi)' : ''}
                     </b>
-                    {m.voice && <span title="Dans le vocal">🎧</span>}
+                    {m.hand === 'parler' && <span>✋</span>}
+                    {m.hand === 'silence' && <span>🤫</span>}
+                    {m.voice && <span title="Dans l’appel">🎧</span>}
                     {isHost && m.uid !== rc.uid && (
                       <button class="icon-btn" onClick={() => rc.kick(m.uid)} title="Retirer">
                         ✖
@@ -369,27 +371,42 @@ function HostOptions({ rc }: { rc: RoomClient }) {
   );
 }
 
-function VoiceBar({ voice }: { voice: VoiceMesh }) {
+function VoiceBar({ voice, rc }: { voice: VoiceMesh; rc: RoomClient }) {
   const on = voice.on.value;
   const supported = useMemo(() => !!navigator.mediaDevices?.getUserMedia && typeof RTCPeerConnection !== 'undefined', []);
-  if (!supported) return <p class="muted small">🎙️ Vocal non disponible sur ce navigateur.</p>;
+  const members = rc.activeMembers();
+  const mine = members.find((m) => m.uid === rc.uid)?.hand ?? null;
+  const hands = members.filter((m) => m.hand);
+  if (!supported) return <p class="muted small">📞 Appel non disponible sur ce navigateur.</p>;
   return (
     <div class="voice-bar card" style={{ padding: 10, margin: '10px 0' }}>
       {!on ? (
         <Btn kind="ok" onClick={() => voice.join()}>
-          🎙️ Rejoindre le vocal
+          📞 Rejoindre l’appel
         </Btn>
       ) : (
         <>
-          <button class={'icon-btn' + (voice.muted.value ? ' danger' : ' on')} onClick={() => voice.toggleMute()}>
-            {voice.muted.value ? '🔇 Micro coupé' : '🎤 Micro ouvert'}
+          <button class={'icon-btn' + (mine === 'parler' ? ' on' : '')} onClick={() => rc.setHand(mine === 'parler' ? null : 'parler')}>
+            ✋ {mine === 'parler' ? 'Baisser la main' : 'Lever la main'}
+          </button>
+          <button class={'icon-btn' + (mine === 'silence' ? ' on' : '')} onClick={() => rc.setHand(mine === 'silence' ? null : 'silence')}>
+            🤫 {mine === 'silence' ? 'Annuler' : 'Demander le silence'}
           </button>
           <button class="icon-btn" onClick={() => voice.leave()}>
-            📴 Quitter le vocal
+            📴 Quitter l’appel
           </button>
         </>
       )}
       <span class="voice-status">{voice.status.value}</span>
+      {hands.length > 0 && (
+        <div style={{ width: '100%', fontWeight: 800 }}>
+          {hands.map((m) => (
+            <div class="note" style={{ marginTop: 6 }}>
+              {m.hand === 'silence' ? `🤫 ${m.name} demande le silence` : `✋ ${m.name} veut parler`}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

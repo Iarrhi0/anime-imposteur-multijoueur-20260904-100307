@@ -5,7 +5,7 @@ import { AI_NAMES, COLORS, PERSONALITIES } from '../ai/personalities';
 import { uid } from '../core/rng';
 
 export function defaultOptions(game: GameModule): GameOptions {
-  const o: GameOptions = { difficulty: 'normal', packs: ['mix'] };
+  const o: GameOptions = { difficulty: 'normal', packs: ['anime-personnages', 'anime-pouvoirs'] };
   for (const d of game.options) o[d.key] = d.default;
   return o;
 }

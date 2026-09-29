@@ -11,9 +11,29 @@ let failures = 0;
 let pausedUntil = 0;
 let inflight = 0;
 
+let lastFree = 0;
+
 export function brainEnabled(): boolean {
   const s = settings.get();
-  return !!s.brainUrl && s.brainOn && Date.now() > pausedUntil;
+  return s.brainOn && Date.now() > pausedUntil;
+}
+
+/** IA gratuite sans compte ni clé (Pollinations). Limitée : 1 requête à la fois, espacées. */
+async function askFree(system: string, user: string): Promise<string> {
+  if (inflight > 1 || Date.now() - lastFree < 3500) throw new Error('busy');
+  lastFree = Date.now();
+  const res = await fetch('https://text.pollinations.ai/openai', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ model: 'openai', messages: [{ role: 'system', content: system }, { role: 'user', content: user }], max_tokens: 70, temperature: 0.95 })
+  });
+  if (res.status === 429) {
+    pausedUntil = Date.now() + 30_000;
+    throw new Error('quota');
+  }
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  const d = await res.json();
+  return String(d?.choices?.[0]?.message?.content ?? '').trim();
 }
 
 export interface BrainRequest {
@@ -39,8 +59,23 @@ function describeView(v: BaseView): string {
 
 export async function askBrain(req: BrainRequest): Promise<string> {
   const s = settings.get();
-  if (!s.brainUrl || inflight > 3) return req.intent;
+  if (inflight > 3) return req.intent;
   const p = personality(req.player.personality);
+  if (!s.brainUrl) {
+    const system = `Tu es ${body0(req, p).persona} dans le jeu de société « ${req.game} ». Tu écris UN message de chat en français familier, 1 phrase courte (max 20 mots), fidèle à ton caractère. Varie toujours tes formulations, ne répète jamais une phrase déjà dite. Ne révèle jamais ton mot secret ni ton rôle. Ne dis jamais que tu es une IA. Pas de guillemets.`;
+    const user = `Ce que tu sais : ${describeView(req.view)}\nChat récent :\n${req.chat.map((m) => `${m.name}: ${m.text}`).slice(-12).join('\n')}\nTon intention : ${req.intent}`;
+    inflight++;
+    try {
+      const t = (await askFree(system, user)).replace(/^["«\s]+|["»\s]+$/g, '').slice(0, 220);
+      failures = 0;
+      return t || req.intent;
+    } catch (e) {
+      if (String((e as Error).message) !== 'busy' && ++failures >= 3) pausedUntil = Date.now() + 120_000;
+      return req.intent;
+    } finally {
+      inflight--;
+    }
+  }
   const body = {
     persona: `${req.player.name}, ${p.label} : ${p.desc}`,
     game: req.game,
@@ -75,6 +110,10 @@ export async function askBrain(req: BrainRequest): Promise<string> {
     clearTimeout(t);
     inflight--;
   }
+}
+
+function body0(req: BrainRequest, p: ReturnType<typeof personality>) {
+  return { persona: `${req.player.name}, ${p.label} (${p.desc})` };
 }
 
 export async function testBrain(url: string): Promise<string> {

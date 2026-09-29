@@ -39,7 +39,7 @@ export function Setup({ mode, gameId, preset, campaignLevel, daily }: { mode: Mo
   );
   const [slots, setSlots] = useState<AISlot[]>(() => {
     if (level) return level.ais.map((personality) => ({ ...newAISlot(), personality }));
-    const n = mode === 'solo' ? Math.max(3, game?.minPlayers ?? 3) : Math.max(0, (game?.minPlayers ?? 3) - 3);
+    const n = mode === 'vs' ? 1 : mode === 'solo' ? Math.max(3, game?.minPlayers ?? 3) : Math.max(0, (game?.minPlayers ?? 3) - 3);
     return Array.from({ length: Math.min(n, (game?.maxPlayers ?? 8) - 1) }, newAISlot);
   });
 
@@ -141,7 +141,7 @@ export function Setup({ mode, gameId, preset, campaignLevel, daily }: { mode: Mo
                 <hr style={{ borderColor: 'var(--line)', margin: '14px 0' }} />
               </>
             )}
-            {mode === 'solo' && (
+            {(mode === 'solo' || mode === 'vs') && (
               <p>
                 {humans[0].avatar} <b>{humans[0].name}</b> <span class="muted">(toi)</span>
               </p>

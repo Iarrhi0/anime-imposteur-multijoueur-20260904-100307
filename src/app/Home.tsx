@@ -44,11 +44,18 @@ export function Home() {
             <div class="mc-desc">Des IA avec de vraies personnalités qui bluffent, accusent et se défendent.</div>
           </span>
         </button>
-        <button class="mode-card" onClick={() => go({ name: 'online' })}>
-          <span class="mc-emoji">🌐</span>
+        <button class="mode-card" onClick={() => go({ name: 'catalog', mode: 'vs' })}>
+          <span class="mc-emoji">⚔️</span>
           <span>
-            <div class="mc-title">Salon en ligne</div>
-            <div class="mc-desc">Crée un salon, partage le code, jouez à distance avec chat vocal et écrit.</div>
+            <div class="mc-title">Mode VS (à deux)</div>
+            <div class="mc-desc">Toi contre une IA ou contre un ami : devine mon personnage, Qui est-ce, quiz…</div>
+          </span>
+        </button>
+        <button class="mode-card" onClick={() => go({ name: 'online' })}>
+          <span class="mc-emoji">📞</span>
+          <span>
+            <div class="mc-title">Appel entre amis</div>
+            <div class="mc-desc">Crée un salon, partage le code : vous vous parlez comme dans un appel de groupe.</div>
           </span>
         </button>
         <button class="mode-card" onClick={() => go({ name: 'catalog', mode: 'local' })}>

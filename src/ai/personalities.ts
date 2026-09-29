@@ -238,10 +238,17 @@ export function personality(id?: PersonalityId): Personality {
   return PERSONALITIES.find((p) => p.id === id) ?? PERSONALITIES[0];
 }
 
+const recent: string[] = [];
+
 export function line(p: Personality, kind: LineKind, rng: Rng, vars: Record<string, string> = {}): string {
   const own = p.lines[kind] ?? [];
-  const pool = own.length && rng.chance(0.7) ? own : COMMON[kind];
+  const all = [...own, ...COMMON[kind]];
+  // évite les phrases utilisées récemment (par n'importe quelle IA)
+  const fresh = all.filter((x) => !recent.includes(x));
+  const pool = fresh.length ? fresh : all;
   let s = rng.pick(pool);
+  recent.push(s);
+  if (recent.length > 30) recent.shift();
   for (const [k, v] of Object.entries(vars)) s = s.split(`{${k}}`).join(v);
   return s;
 }
