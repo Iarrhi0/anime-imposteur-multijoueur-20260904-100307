@@ -117,6 +117,8 @@ export interface DState extends BaseState {
   guessOptions: string[];
   clues: Clue[];
   ready: string[];
+  /** Joueurs qui veulent un tour d'indices de plus. */
+  moreVotes?: string[];
   votes: Record<string, any>;
   results: VoteResult[];
   events: string[];
@@ -148,6 +150,7 @@ export interface DView extends BaseView {
   clues: (Clue & { hidden?: boolean })[];
   voted: string[];
   ready: string[];
+  moreVotes: string[];
   results: VoteResult[];
   events: string[];
   notes: string[];
@@ -167,7 +170,7 @@ export interface DView extends BaseView {
 // ---------- Options communes ----------
 
 export const COMMON_OPTIONS: OptionDef[] = [
-  { key: 'cluesRounds', label: 'Tours d’indices (écrits) avant le débat', type: 'number', min: 1, max: 5, default: 2 },
+  { key: 'cluesRounds', label: 'Tours d’indices avant le débat (on peut en rajouter à volonté pendant le débat)', type: 'number', min: 1, max: 5, default: 1 },
   { key: 'clueSec', label: 'Temps par indice (s)', type: 'number', min: 15, max: 120, step: 5, default: 40 },
   { key: 'discussionSec', label: 'Temps de débat (s)', type: 'number', min: 20, max: 300, step: 10, default: 90 },
   { key: 'voteSec', label: 'Temps de vote (s)', type: 'number', min: 15, max: 120, step: 5, default: 40, advanced: true },
@@ -260,6 +263,7 @@ function startClues(cfg: DeductionConfig, s: DState, ctx: RuntimeCtx) {
 function startDiscussion(s: DState, ctx: RuntimeCtx) {
   s.phase = 'discussion';
   s.ready = [];
+  s.moreVotes = [];
   s.muted = [];
   s.doubleVote = undefined;
   if (s.kind === 'answer') s.answersRevealed = true;
@@ -362,6 +366,16 @@ export function onAction(cfg: DeductionConfig, s: DState, pid: string, a: GameAc
       if (!s.ready.includes(pid)) s.ready.push(pid);
       if (s.phase === 'reveal' && s.active.every((id) => s.ready.includes(id))) startClues(cfg, s, ctx);
       if (s.phase === 'discussion' && s.alive.every((id) => s.ready.includes(id))) startVote(s, ctx);
+      return;
+    }
+    case 'more': {
+      if (s.phase !== 'discussion' || !isAlive) return;
+      s.moreVotes = [...new Set([...(s.moreVotes ?? []), pid])];
+      if (s.moreVotes.length >= Math.ceil(s.alive.length / 2)) {
+        s.round++;
+        ctx.announce('🔁 Encore un tour d’indices !');
+        startClues(cfg, s, ctx);
+      }
       return;
     }
     case 'skip': {
@@ -718,6 +732,7 @@ export function makeView(cfg: DeductionConfig, s: DState, pid: string | null, ct
     clues,
     voted: Object.keys(s.votes),
     ready: s.ready,
+    moreVotes: s.moreVotes ?? [],
     results: s.results,
     events: s.events,
     notes: pid ? s.notes[pid] ?? [] : [],

@@ -149,6 +149,10 @@ function Room({ rc, voice }: { rc: RoomClient; voice: VoiceMesh }) {
   }, [room?.status, room?.gameNo, isHost]);
 
   useEffect(() => () => ctrlRef.current?.stop(), []);
+  // l'audio se connecte automatiquement en entrant dans le salon
+  useEffect(() => {
+    if (!voice.on.value) void voice.join();
+  }, []);
 
   const quit = async (confirmFirst = true) => {
     if (confirmFirst && !confirm(isHost ? 'Fermer le salon pour tout le monde ?' : 'Quitter le salon ?')) return;
@@ -392,8 +396,11 @@ function VoiceBar({ voice, rc }: { voice: VoiceMesh; rc: RoomClient }) {
           <button class={'icon-btn' + (mine === 'silence' ? ' on' : '')} onClick={() => rc.setHand(mine === 'silence' ? null : 'silence')}>
             🤫 {mine === 'silence' ? 'Annuler' : 'Demander le silence'}
           </button>
+          <button class="icon-btn" onClick={() => document.querySelector('.chat')?.scrollIntoView({ behavior: 'smooth' })}>
+            💬
+          </button>
           <button class="icon-btn" onClick={() => voice.leave()}>
-            📴 Quitter l’appel
+            📴
           </button>
         </>
       )}

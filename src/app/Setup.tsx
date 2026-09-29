@@ -11,6 +11,15 @@ import { uid } from '../core/rng';
 import { LEVELS, dailyChallenge } from './campaign';
 import { TopBar } from './TopBar';
 
+const QUICK_THEMES = [
+  { label: '🎌 Anime', packs: ['anime-personnages', 'anime-pouvoirs'] },
+  { label: '📺 Séries anime', packs: ['anime-univers'] },
+  { label: '🎬 Films & séries', packs: ['films', 'series'] },
+  { label: '🎮 Jeux vidéo', packs: ['jeux-video'] },
+  { label: '⚽ Foot', packs: ['football'] },
+  { label: '🎲 Mix', packs: ['mix'] }
+];
+
 export function Setup({ mode, gameId, preset, campaignLevel, daily }: { mode: Mode; gameId: string; preset?: string; campaignLevel?: number; daily?: boolean }) {
   const game = getGame(gameId);
   const level = campaignLevel ? LEVELS.find((l) => l.n === campaignLevel) : undefined;
@@ -84,30 +93,41 @@ export function Setup({ mode, gameId, preset, campaignLevel, daily }: { mode: Mo
           </ol>
         </details>
 
-        {!locked && game.presets && (
-          <Section title="Variantes">
-            <PresetPicker game={game} options={options} onChange={setOptions} />
-          </Section>
-        )}
-
         {!locked && game.usesThemes && (
-          <Section title="Thèmes">
-            <PackPicker selected={options.packs ?? ['mix']} onChange={(packs) => setOptions({ ...options, packs })} />
+          <Section title="Thème">
+            <div class="chips-select">
+              {QUICK_THEMES.map((t) => (
+                <button type="button" class={'chip-sel' + (JSON.stringify(options.packs) === JSON.stringify(t.packs) ? ' sel' : '')} onClick={() => setOptions({ ...options, packs: t.packs })}>
+                  {t.label}
+                </button>
+              ))}
+            </div>
           </Section>
         )}
-
         {!locked && (
-          <Section title="Difficulté des IA">
-            <DifficultyPicker value={options.difficulty} onChange={(difficulty) => setOptions({ ...options, difficulty })} />
-          </Section>
-        )}
-
-        {!locked && game.options.length > 0 && (
-          <Section title="Réglages">
-            <Card>
-              <OptionsForm game={game} options={options} onChange={setOptions} />
-            </Card>
-          </Section>
+          <details class="adv">
+            <summary>⚙️ Plus d’options (variantes, difficulté, réglages)</summary>
+            {game.presets && (
+              <Section title="Variantes">
+                <PresetPicker game={game} options={options} onChange={setOptions} />
+              </Section>
+            )}
+            {game.usesThemes && (
+              <Section title="Tous les thèmes">
+                <PackPicker selected={options.packs ?? ['mix']} onChange={(packs) => setOptions({ ...options, packs })} />
+              </Section>
+            )}
+            <Section title="Difficulté des IA">
+              <DifficultyPicker value={options.difficulty} onChange={(difficulty) => setOptions({ ...options, difficulty })} />
+            </Section>
+            {game.options.length > 0 && (
+              <Section title="Réglages">
+                <Card>
+                  <OptionsForm game={game} options={options} onChange={setOptions} />
+                </Card>
+              </Section>
+            )}
+          </details>
         )}
 
         <Section title={`Joueurs (${total}) — ${game.minPlayers} à ${game.maxPlayers}`}>
@@ -152,8 +172,8 @@ export function Setup({ mode, gameId, preset, campaignLevel, daily }: { mode: Mo
 
         {tooFew && <p class="pill warn">Il faut au moins {game.minPlayers} joueurs (ajoute des IA).</p>}
         {tooMany && <p class="pill warn">Maximum {game.maxPlayers} joueurs.</p>}
-        <Btn big disabled={tooFew || tooMany} onClick={start}>
-          🚀 Lancer la partie
+        <Btn big class="sticky-go" disabled={tooFew || tooMany} onClick={start}>
+          🚀 JOUER
         </Btn>
       </div>
     </div>

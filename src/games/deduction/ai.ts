@@ -21,6 +21,7 @@ interface Mem {
   talkAt?: number;
   lastClueSeen: number;
   answered?: Record<string, boolean>;
+  moreAsked?: boolean;
 }
 
 const ACCUSE = /imposteur|louche|suspect|\bsus\b|menteur|\bment\b|c est (lui|elle|toi)|je vote|votez|bizarre|grill|accuse|coupable|undercover|mr white|espion|cameleon|pas clair|hypothese|analyse|surveille|oeil|vague|colle pas|coherent|correlation|regardez|propose|elimine|perdre de temps|tete d|pointe vers|j en suis sur|c est toi/;
@@ -47,6 +48,7 @@ export function makeDeductionAI(cfg: DeductionConfig): AIStrategy<DView> {
         mem.actAt = undefined;
         mem.readyAt = undefined;
         mem.answered = {};
+        mem.moreAsked = false;
         mem.talkAt = api.now + 1500 + api.rng.int(0, 4000) * (1.2 - P.talk);
       }
       readChat(v, mind, api, mem, P);
@@ -414,6 +416,11 @@ function discuss(v: DView, api: AgentAPI, mem: Mem, P: Personality, k: Knowledge
   if (v.muted.includes(me)) {
     if (!v.ready.includes(me)) api.act({ type: 'ready' });
     return;
+  }
+  // Pas assez d'infos ? l'IA demande un tour d'indices de plus
+  if (!mem.moreAsked && v.clues.filter((c) => c.pid === me).length < 3) {
+    mem.moreAsked = true;
+    if (api.rng.chance(0.45)) api.act({ type: 'more' });
   }
   const others = v.alive.filter((id) => id !== me && !k.allies.includes(id));
   const maxMsgs = 1 + Math.round(P.talk * 3);

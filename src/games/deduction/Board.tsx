@@ -302,6 +302,11 @@ function Discussion({ v, me, dispatch, players, local }: { v: DView; me: Player 
             {iAmReady ? 'Prêt ✅' : 'Je suis prêt à voter'}
           </Btn>
         )}
+        {canReady && (
+          <Btn kind="ghost" disabled={v.moreVotes.includes(me!.id)} onClick={() => dispatch({ type: 'more' })}>
+            🔁 Encore un tour d’indices ({v.moreVotes.length}/{Math.ceil(v.alive.length / 2)})
+          </Btn>
+        )}
         {local && (
           <Btn kind="ghost" onClick={() => dispatch({ type: 'skip' })}>
             Passer au vote ⏭️
