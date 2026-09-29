@@ -48,6 +48,16 @@ export function onBack(fn: () => void): () => void {
     if (i >= 0) backStack.splice(i, 1);
   };
 }
+// Dans l'APK Android : le bouton retour physique passe par notre historique au lieu de fermer l'appli.
+const nativeApp = typeof window !== 'undefined' ? (window as any).Capacitor?.Plugins?.App : undefined;
+if (nativeApp) {
+  nativeApp.addListener('backButton', () => {
+    if (history.state?.exit) {
+      if (confirm('Quitter l’application ?')) nativeApp.exitApp();
+      else history.pushState({ r: { name: 'home' } }, '');
+    } else history.back();
+  });
+}
 if (typeof window !== 'undefined') {
   history.replaceState({ exit: true }, '');
   history.pushState({ r: { name: 'home' } }, '');
@@ -59,7 +69,7 @@ if (typeof window !== 'undefined') {
       return;
     }
     if (e.state?.exit) {
-      if (confirm('Quitter l’application ?')) history.back();
+      if (confirm('Quitter l’application ?')) nativeApp ? nativeApp.exitApp() : history.back();
       else history.pushState({ r: { name: 'home' } }, '');
       return;
     }
