@@ -22,8 +22,9 @@ jobs:
       - run: npm run build
       - name: Projet Android (Capacitor)
         run: |
-          npm i --no-save @capacitor/core@7 @capacitor/cli@7 @capacitor/android@7 @capacitor/app@7
+          npm i @capacitor/core@7 @capacitor/cli@7 @capacitor/android@7 @capacitor/app@7
           npx cap add android
+          grep -q "capacitor/app" android/capacitor.settings.gradle && echo "Plugin App inclus"
           # micro pour le chat vocal et la reconnaissance vocale
           sed -i 's#<uses-permission android:name="android.permission.INTERNET" />#<uses-permission android:name="android.permission.INTERNET" />\n    <uses-permission android:name="android.permission.RECORD_AUDIO" />\n    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />#' android/app/src/main/AndroidManifest.xml
           npx cap sync android
